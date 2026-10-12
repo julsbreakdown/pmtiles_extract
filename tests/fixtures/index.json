@@ -1,0 +1,17 @@
+{
+ "version": "0.0.13",
+ "items": [
+  {"name": "planet.pmtiles", "url": "https://download.mapterhorn.com/planet.pmtiles", "size": 355579263191,
+   "min_lon": -180.0, "min_lat": -85.0511287798066, "max_lon": 180.0, "max_lat": 85.0511287798066, "min_zoom": 0, "max_zoom": 12},
+  {"name": "6-0-21.pmtiles", "url": "https://download.mapterhorn.com/6-0-21.pmtiles", "size": 31749705,
+   "min_lon": -180.0, "min_lat": 48.92249926375824, "max_lon": -174.375, "max_lat": 52.48278022207821, "min_zoom": 13, "max_zoom": 13},
+  {"name": "6-31-22.pmtiles", "url": "https://download.mapterhorn.com/6-31-22.pmtiles", "size": 138710218423,
+   "min_lon": -5.625, "min_lat": 45.089035564831015, "max_lon": 0.0, "max_lat": 48.92249926375824, "min_zoom": 13, "max_zoom": 17},
+  {"name": "6-32-21.pmtiles", "url": "https://download.mapterhorn.com/6-32-21.pmtiles", "size": 150871259017,
+   "min_lon": 0.0, "min_lat": 48.92249926375824, "max_lon": 5.625, "max_lat": 52.48278022207821, "min_zoom": 13, "max_zoom": 17},
+  {"name": "6-32-22.pmtiles", "url": "https://download.mapterhorn.com/6-32-22.pmtiles", "size": 338072264827,
+   "min_lon": 0.0, "min_lat": 45.089035564831015, "max_lon": 5.625, "max_lat": 48.92249926375824, "min_zoom": 13, "max_zoom": 17},
+  {"name": "6-33-22.pmtiles", "url": "https://download.mapterhorn.com/6-33-22.pmtiles", "size": 614918478203,
+   "min_lon": 5.625, "min_lat": 45.089035564831015, "max_lon": 11.25, "max_lat": 48.92249926375824, "min_zoom": 13, "max_zoom": 18}
+ ]
+}
