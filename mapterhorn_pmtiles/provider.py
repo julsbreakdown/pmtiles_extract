@@ -1,6 +1,6 @@
 from qgis.core import QgsProcessingProvider
 
-from .algorithm import ExtractMapterhornAlgorithm
+from .algorithm import ExtractBaseAlgorithm, ExtractZonesAlgorithm
 
 
 class MapterhornProvider(QgsProcessingProvider):
@@ -11,4 +11,5 @@ class MapterhornProvider(QgsProcessingProvider):
         return "Mapterhorn"
 
     def loadAlgorithms(self):
-        self.addAlgorithm(ExtractMapterhornAlgorithm())
+        self.addAlgorithm(ExtractBaseAlgorithm())
+        self.addAlgorithm(ExtractZonesAlgorithm())

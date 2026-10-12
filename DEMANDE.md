@@ -86,6 +86,8 @@ Traitement :
 
 Une zone avec un zoom < 13 est une erreur : la base couvre déjà 0..12.
 
+Base et zones sont deux commandes séparées, lançables indépendamment : `mapterhorn-extract base` et `mapterhorn-extract zones` en CLI, `mapterhorn:extract_base` et `mapterhorn:extract_zones` dans QGIS.
+
 ## Binaire `pmtiles`
 
 Non embarqué. Chemin lu dans un paramètre QGIS (et `--pmtiles-bin` en CLI), à défaut `pmtiles` dans le PATH. Erreur explicite si introuvable.
@@ -110,7 +112,7 @@ plugin_pmtiles/
 │   ├── pmtiles_bin.py           # localisation du binaire, commande extract
 │   ├── extract.py               # plan(), plan_base(), extract_one(), merge(), Job
 │   ├── zones.py                 # Zone, zones_from_geojson, extract_base, extract_zone
-│   └── __main__.py              # CLI : --geojson | --extent, --maxzoom, --output-dir
+│   └── __main__.py              # CLI : sous-commandes base et zones
 ├── mapterhorn_pmtiles/          # plugin QGIS
 │   ├── mapterhorn_extract -> ../mapterhorn_extract   # symlink, résolu au zip
 │   ├── metadata.txt
@@ -118,7 +120,7 @@ plugin_pmtiles/
 │   ├── plugin.py                # enregistrement du provider
 │   ├── provider.py
 │   ├── compat.py                # enums QGIS 3.34 / 4
-│   └── algorithm.py             # QgsProcessingAlgorithm mapterhorn:extract
+│   └── algorithm.py             # mapterhorn:extract_base, mapterhorn:extract_zones
 └── tests/
 ```
 

@@ -20,57 +20,74 @@ from . import (
     zones_from_geojson,
 )
 
+EXTENT_HELP = "min_lon,min_lat,max_lon,max_lat; write --extent=-1,... when it starts with a minus"
+
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        prog="mapterhorn-extract",
-        description="Extract a Mapterhorn z0-12 base file (France by default) and one z13+ file per zone.",
-    )
-    area = parser.add_mutually_exclusive_group()
-    area.add_argument(
-        "--geojson", type=Path, help="EPSG:4326 polygon zones, optional properties: name, maxzoom"
-    )
-    area.add_argument(
-        "--extent",
-        help="min_lon,min_lat,max_lon,max_lat as one zone; write --extent=-1,... when it starts with a minus",
-    )
-    base = parser.add_mutually_exclusive_group()
-    base.add_argument("--base-geojson", type=Path, help="EPSG:4326 polygon for the z0-12 base file (default: France)")
-    base.add_argument("--base-extent", help="min_lon,min_lat,max_lon,max_lat for the z0-12 base file (default: France)")
-    parser.add_argument("--maxzoom", type=int, help="zoom for zones without maxzoom, >= 13; required with zones")
-    parser.add_argument("--same-zoom", action="store_true", help="use --maxzoom for every zone")
-    parser.add_argument("--output-dir", type=Path, default=Path("."))
-    parser.add_argument("--pmtiles-bin", help="pmtiles binary (default: pmtiles on PATH)")
-    parser.add_argument("--threads", type=int, default=16, help="pmtiles --download-threads")
-    parser.add_argument("--index", default=INDEX_URL, help="Mapterhorn download_urls.json URL or path")
-    parser.add_argument("--dry-run", action="store_true", help="list what would be extracted")
-    args = parser.parse_args(argv)
-    has_zones = args.geojson is not None or args.extent is not None
-    if has_zones and args.maxzoom is None:
-        parser.error("--maxzoom is required with --geojson or --extent")
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--output-dir", type=Path, default=Path("."))
+    common.add_argument("--pmtiles-bin", help="pmtiles binary (default: pmtiles on PATH)")
+    common.add_argument("--threads", type=int, default=16, help="pmtiles --download-threads")
+    common.add_argument("--index", default=INDEX_URL, help="Mapterhorn download_urls.json URL or path")
+    common.add_argument("--dry-run", action="store_true", help="list what would be extracted")
 
+    parser = argparse.ArgumentParser(prog="mapterhorn-extract", description="Extract Mapterhorn terrain as PMTiles.")
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    base = commands.add_parser("base", parents=[common], help="z0-12 file, France by default")
+    base_area = base.add_mutually_exclusive_group()
+    base_area.add_argument("--geojson", type=Path, help="EPSG:4326 polygon to cut instead of France")
+    base_area.add_argument("--extent", help=EXTENT_HELP)
+
+    zones = commands.add_parser("zones", parents=[common], help="one z13+ file per zone")
+    zones_area = zones.add_mutually_exclusive_group(required=True)
+    zones_area.add_argument("--geojson", type=Path, help="EPSG:4326 polygon zones, optional properties: name, maxzoom")
+    zones_area.add_argument("--extent", help=EXTENT_HELP + "; a single zone named extent")
+    zones.add_argument("--maxzoom", type=int, required=True, help="zoom for zones without maxzoom, >= 13")
+    zones.add_argument("--same-zoom", action="store_true", help="use --maxzoom for every zone")
+
+    args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     with tempfile.TemporaryDirectory() as work:
-        work_dir = Path(work)
         try:
-            zones = []
-            if has_zones:
-                zones_path = args.geojson or _extent_zone(parse_extent(args.extent), work_dir / "extent.geojson")
-                zones = zones_from_geojson(zones_path, args.maxzoom, work_dir, same_zoom=args.same_zoom)
-            base_area = {
-                "region": args.base_geojson,
-                "bbox": parse_extent(args.base_extent) if args.base_extent else None,
-            }
-            archives = load_index(args.index)
+            if args.command == "base":
+                return _base(args)
+            return _zones(args, Path(work))
         except (ValueError, OSError) as error:
             parser.error(str(error))
-        if args.dry_run:
-            return _dry_run(base_area, zones, archives)
-        try:
-            return _extract(base_area, zones, archives, args)
         except (PmtilesNotFound, ExtractError) as error:
             print(f"error: {error}", file=sys.stderr)
             return 1
+
+
+def _base(args) -> int:
+    area = {"region": args.geojson, "bbox": parse_extent(args.extent) if args.extent else None}
+    archives = load_index(args.index)
+    if args.dry_run:
+        job = base_job(archives=archives, **area)
+        if job is not None:
+            print(f"base {job.label} z{job.minzoom}-{job.maxzoom}: {job.name}")
+        return 0
+    path = extract_base(args.output_dir, archives=archives, binary=args.pmtiles_bin, threads=args.threads, **area)
+    if path is not None:
+        print(path)
+    return 0
+
+
+def _zones(args, work_dir: Path) -> int:
+    zones_path = args.geojson or _extent_zone(parse_extent(args.extent), work_dir / "extent.geojson")
+    zones = zones_from_geojson(zones_path, args.maxzoom, work_dir, same_zoom=args.same_zoom)
+    archives = load_index(args.index)
+    covered = _covered_zones(zones, archives)
+    if not covered:
+        return 1
+    for zone, jobs in covered:
+        if args.dry_run:
+            maxzoom = max(job.maxzoom for job in jobs)
+            print(f"zone {zone.name} z13-{maxzoom}: {', '.join(job.name for job in jobs)}")
+        else:
+            print(extract_zone(zone, args.output_dir, archives=archives, binary=args.pmtiles_bin, threads=args.threads))
+    return 0 if len(covered) == len(zones) else 1
 
 
 def _extent_zone(bbox, path: Path) -> Path:
@@ -79,32 +96,6 @@ def _extent_zone(bbox, path: Path) -> Path:
     feature = {"type": "Feature", "properties": {"name": "extent"}, "geometry": {"type": "Polygon", "coordinates": [ring]}}
     path.write_text(json.dumps({"type": "FeatureCollection", "features": [feature]}), encoding="utf-8")
     return path
-
-
-def _dry_run(base_area, zones, archives) -> int:
-    covered = _covered_zones(zones, archives)
-    if zones and not covered:
-        return 1
-    base = base_job(archives=archives, **base_area)
-    if base is not None:
-        print(f"base {base.label} z{base.minzoom}-{base.maxzoom}: {base.name}")
-    for zone, jobs in covered:
-        maxzoom = max(job.maxzoom for job in jobs)
-        print(f"zone {zone.name} z13-{maxzoom}: {', '.join(job.name for job in jobs)}")
-    return 0 if len(covered) == len(zones) else 1
-
-
-def _extract(base_area, zones, archives, args) -> int:
-    covered = _covered_zones(zones, archives)
-    if zones and not covered:
-        return 1
-    options = {"archives": archives, "binary": args.pmtiles_bin, "threads": args.threads}
-    base = extract_base(args.output_dir, **base_area, **options)
-    if base is not None:
-        print(base)
-    for zone, _ in covered:
-        print(extract_zone(zone, args.output_dir, **options))
-    return 0 if len(covered) == len(zones) else 1
 
 
 def _covered_zones(zones, archives):

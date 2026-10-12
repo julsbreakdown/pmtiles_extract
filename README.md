@@ -8,7 +8,9 @@ Extracts [Mapterhorn](https://mapterhorn.com) terrain tiles over a set of zones,
 Two front ends share the same code:
 
 - `mapterhorn_extract`: a Python library and command line, standard library only, no QGIS needed (scripts, Airflow);
-- `mapterhorn_pmtiles`: a QGIS Processing plugin, algorithm `mapterhorn:extract`.
+- `mapterhorn_pmtiles`: a QGIS Processing plugin, algorithms `mapterhorn:extract_base` and `mapterhorn:extract_zones`.
+
+The base file and the zone files are produced by two separate commands, so each can be run, scheduled or rerun on its own.
 
 Both wrap the [go-pmtiles](https://github.com/protomaps/go-pmtiles) CLI. Background and design decisions: [DEMANDE.md](DEMANDE.md).
 
@@ -57,7 +59,15 @@ zip -r mapterhorn_pmtiles.zip mapterhorn_pmtiles -x '*__pycache__*'
 
 ### Use
 
-**Processing Toolbox > Mapterhorn > Extract Mapterhorn PMTiles per zone.** One polygon of the input layer is one zone; selected features only is supported.
+Two algorithms under **Processing Toolbox > Mapterhorn**.
+
+**Extract Mapterhorn base PMTiles (zooms 0-12)**
+
+| Parameter | Meaning |
+|---|---|
+| Extent | Optional. Empty: France. Any CRS, reprojected to EPSG:4326 |
+
+**Extract Mapterhorn PMTiles per zone (zooms 13+).** One polygon of the input layer is one zone; selected features only is supported.
 
 | Parameter | Meaning |
 |---|---|
@@ -66,42 +76,58 @@ zip -r mapterhorn_pmtiles.zip mapterhorn_pmtiles -x '*__pycache__*'
 | Zone max zoom field | Optional, numeric. Empty values use the default max zoom |
 | Default max zoom | 13 to 22, default 15 |
 | Same max zoom for all zones | Ignores the zoom field and applies the default to every zone |
-| Base file extent | Optional. Empty: France. Any CRS, reprojected to EPSG:4326 |
+
+The run fails if no zone has Mapterhorn coverage above zoom 12. A zone without coverage among covered ones is reported and skipped.
+
+Both share:
+
+| Parameter | Meaning |
+|---|---|
 | pmtiles binary | Optional. Empty: `pmtiles` on the PATH. QGIS may not see your shell PATH, so set it explicitly if in doubt |
 | Download threads | Passed to `pmtiles extract --download-threads` |
 | Output folder | Where the files are written |
 
-The run fails if no zone has Mapterhorn coverage above zoom 12. A zone without coverage among covered ones is reported and skipped.
-
 ## Command line
 
+Two subcommands, one per output:
+
 ```bash
-uv run mapterhorn-extract --geojson zones.geojson --maxzoom 15 --output-dir out/ --pmtiles-bin ./pmtiles
+uv run mapterhorn-extract base --output-dir out/ --pmtiles-bin ./pmtiles
+uv run mapterhorn-extract zones --geojson zones.geojson --maxzoom 15 --output-dir out/ --pmtiles-bin ./pmtiles
 ```
 
-- `--geojson`: EPSG:4326 polygons, one zone per feature, optional properties `name` and `maxzoom`.
-- `--extent min_lon,min_lat,max_lon,max_lat`: a single zone named `extent`. Write `--extent=-1.5,...` when the value starts with a minus sign.
-- `--maxzoom`: zoom for zones without a `maxzoom` property.
-- `--same-zoom`: use `--maxzoom` for every zone.
-- `--base-extent min_lon,min_lat,max_lon,max_lat` or `--base-geojson`: replace France as the base file extent.
-- `--dry-run`: list what would be extracted, nothing is downloaded.
+`base`: the z0-12 file, over France unless one of these is given:
 
-Without zones, only the base file is produced. Prints the produced paths, base first. Exit code 1 when a zone has no coverage or pmtiles fails, 2 on invalid input.
+- `--extent min_lon,min_lat,max_lon,max_lat`;
+- `--geojson`: an EPSG:4326 polygon.
+
+`zones`: one z13+ file per zone, never the base file. One of these is required:
+
+- `--geojson`: EPSG:4326 polygons, one zone per feature, optional properties `name` and `maxzoom`;
+- `--extent min_lon,min_lat,max_lon,max_lat`: a single zone named `extent`;
+- `--maxzoom` (required): zoom for zones without a `maxzoom` property;
+- `--same-zoom`: use `--maxzoom` for every zone.
+
+Both take `--output-dir`, `--pmtiles-bin`, `--threads`, `--index` and `--dry-run` (list what would be extracted, nothing is downloaded). Write `--extent=-1.5,...` when the value starts with a minus sign.
+
+Each prints the paths it produced. Exit code 1 when a zone has no coverage or pmtiles fails, 2 on invalid input.
 
 ### Example: the French Alps
 
 [`examples/alpes.geojson`](examples/alpes.geojson) is a rough polygon of the French Alps, named `alpes`, with `maxzoom: 16`. Check what it will download first:
 
 ```console
-$ uv run mapterhorn-extract --geojson examples/alpes.geojson --maxzoom 15 --dry-run
+$ uv run mapterhorn-extract base --dry-run
 base france z0-12: planet.pmtiles
+$ uv run mapterhorn-extract zones --geojson examples/alpes.geojson --maxzoom 15 --dry-run
 zone alpes z13-16: 6-32-22.pmtiles, 6-32-23.pmtiles, 6-33-22.pmtiles, 6-33-23.pmtiles
 ```
 
 The zone keeps its own `maxzoom` (16); `--maxzoom 15` only applies to zones without one. Force 15 everywhere with `--same-zoom`. Then download:
 
 ```bash
-uv run mapterhorn-extract --geojson examples/alpes.geojson --maxzoom 15 \
+uv run mapterhorn-extract base --output-dir out/ --pmtiles-bin ./pmtiles
+uv run mapterhorn-extract zones --geojson examples/alpes.geojson --maxzoom 15 \
   --output-dir out/ --pmtiles-bin ./pmtiles
 ```
 
@@ -110,7 +136,7 @@ out/france_z0-12_<key>.pmtiles
 out/alpes_z13-16_<key>.pmtiles
 ```
 
-A zone this size at z16 is a large download: try a lower `maxzoom` first. In QGIS, load `examples/alpes.geojson` as a layer and pick `name` and `maxzoom` as the name and max zoom fields.
+A zone this size at z16 is a large download: try a lower `maxzoom` first. In QGIS, load `examples/alpes.geojson` as a layer and run the zones algorithm with `name` and `maxzoom` as the name and max zoom fields; run the base algorithm with an empty extent for France.
 
 ## Library
 
