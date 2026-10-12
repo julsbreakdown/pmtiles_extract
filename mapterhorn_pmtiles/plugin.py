@@ -1,0 +1,20 @@
+from qgis.core import QgsApplication
+
+from .provider import MapterhornProvider
+
+
+class MapterhornPlugin:
+    def __init__(self):
+        self.provider = None
+
+    def initProcessing(self):
+        self.provider = MapterhornProvider()
+        QgsApplication.processingRegistry().addProvider(self.provider)
+
+    def initGui(self):
+        self.initProcessing()
+
+    def unload(self):
+        if self.provider is not None:
+            QgsApplication.processingRegistry().removeProvider(self.provider)
+            self.provider = None

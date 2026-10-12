@@ -1,0 +1,13 @@
+[general]
+name=Mapterhorn PMTiles
+qgisMinimumVersion=3.34
+qgisMaximumVersion=4.99
+supportsQt6=True
+description=Extract high-zoom Mapterhorn terrain PMTiles over an area
+about=Wraps the go-pmtiles CLI to extract Mapterhorn z13+ archives over a polygon layer, one PMTiles per Mapterhorn z6 archive. Requires the pmtiles binary.
+version=0.1.0
+author=Camptocamp
+email=julien.waddle@camptocamp.com
+tags=pmtiles,terrain,dem,mapterhorn,processing
+hasProcessingProvider=yes
+experimental=True
