@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 INDEX_URL = "https://download.mapterhorn.com/download_urls.json"
+# download.mapterhorn.com answers 403 to the default Python-urllib User-Agent.
+USER_AGENT = "mapterhorn-extract/0.1"
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,7 @@ def load_index(source: str | Path = INDEX_URL) -> list[Archive]:
 
 def _read(source: str) -> str:
     if source.startswith(("http://", "https://")):
-        with urllib.request.urlopen(source, timeout=60) as response:
+        request = urllib.request.Request(source, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(request, timeout=60) as response:
             return response.read().decode("utf-8")
     return Path(source).read_text(encoding="utf-8")
