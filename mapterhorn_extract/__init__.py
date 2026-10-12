@@ -2,7 +2,7 @@ from .area import BBox, bbox_from_geojson, parse_extent
 from .extract import ExtractCancelled, ExtractError, Job, extract_one, merge, plan, plan_base
 from .index import INDEX_URL, Archive, load_index
 from .pmtiles_bin import PmtilesNotFound
-from .zones import Zone, extract_base, extract_zone, zones_from_geojson
+from .zones import Zone, extract_base, extract_zone, plan_zone, zones_from_geojson
 
 __all__ = [
     "INDEX_URL",
@@ -22,5 +22,6 @@ __all__ = [
     "parse_extent",
     "plan",
     "plan_base",
+    "plan_zone",
     "zones_from_geojson",
 ]

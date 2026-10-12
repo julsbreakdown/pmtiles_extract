@@ -84,3 +84,12 @@ def test_plan_base_targets_planet(archives):
 
 def test_plan_base_without_planet_is_none(archives):
     assert plan_base(LYON, archives=[a for a in archives if a.name != "planet.pmtiles"]) is None
+
+
+def test_archives_are_selected_per_polygon_part(archives, tmp_path):
+    chamonix = [[6.80, 45.85], [6.95, 45.85], [6.95, 45.95], [6.80, 45.85]]
+    reims = [[4.00, 49.20], [4.10, 49.20], [4.10, 49.30], [4.00, 49.20]]
+    region = tmp_path / "two_parts.geojson"
+    region.write_text(json.dumps({"type": "MultiPolygon", "coordinates": [[chamonix], [reims]]}))
+    jobs = plan((4.00, 45.85, 6.95, 49.30), 15, region=region, archives=archives)
+    assert [j.name for j in jobs] == ["6-32-21.pmtiles", "6-33-22.pmtiles"]

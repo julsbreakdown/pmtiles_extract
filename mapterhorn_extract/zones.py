@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .area import POLYGON_TYPES, bbox_from_geojson
-from .extract import HIGH_ZOOM_MIN, extract_one, merge, plan, plan_base
+from .extract import HIGH_ZOOM_MIN, Job, extract_one, merge, plan, plan_base
 from .index import Archive
 
 
@@ -60,6 +60,10 @@ def extract_base(
     return extract_one(job, output_dir, binary=binary, threads=threads, should_stop=should_stop)
 
 
+def plan_zone(zone: Zone, archives: list[Archive] | None = None) -> list[Job]:
+    return plan(bbox_from_geojson(zone.region), zone.maxzoom, region=zone.region, archives=archives)
+
+
 def extract_zone(
     zone: Zone,
     output_dir: str | Path,
@@ -68,7 +72,7 @@ def extract_zone(
     threads: int = 16,
     should_stop: Callable[[], bool] | None = None,
 ) -> Path | None:
-    jobs = plan(bbox_from_geojson(zone.region), zone.maxzoom, region=zone.region, archives=archives)
+    jobs = plan_zone(zone, archives)
     if not jobs:
         return None
     output_dir = Path(output_dir)

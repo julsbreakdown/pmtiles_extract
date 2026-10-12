@@ -3,13 +3,12 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
-import shutil
 import subprocess
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from .area import BBox
+from .area import BBox, part_bboxes
 from .index import Archive, load_index
 from .pmtiles_bin import extract_command, find_pmtiles, merge_command
 
@@ -60,6 +59,7 @@ def plan(
         archives = load_index()
     region_path = str(Path(region).resolve()) if region is not None else None
     area_key = _area_key(bbox, region_path)
+    parts = part_bboxes(region_path) if region_path is not None else [bbox]
     jobs = [
         Job(
             name=archive.name,
@@ -71,7 +71,7 @@ def plan(
             area_key=area_key,
         )
         for archive in archives
-        if archive.min_zoom >= HIGH_ZOOM_MIN and _intersects(archive.bbox, bbox)
+        if archive.min_zoom >= HIGH_ZOOM_MIN and any(_intersects(archive.bbox, part) for part in parts)
     ]
     return sorted(jobs, key=lambda job: job.name)
 
@@ -135,7 +135,7 @@ def merge(
         return output
     if len(inputs) == 1:
         output.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(inputs[0], output)
+        os.replace(inputs[0], output)
         return output
     binary = find_pmtiles(binary)
     logger.info("merging %d extracts into %s", len(inputs), output.name)

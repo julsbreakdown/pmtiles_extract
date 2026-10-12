@@ -83,11 +83,11 @@ def test_merge_runs_pmtiles_merge(fake_pmtiles, tmp_path):
     assert all(p.exists() for p in inputs)
 
 
-def test_merge_single_input_is_copied(fake_pmtiles, tmp_path):
+def test_merge_single_input_is_moved(fake_pmtiles, tmp_path):
     [single] = _inputs(tmp_path, 1)
     out = merge([single], tmp_path / "zone.pmtiles", binary=str(fake_pmtiles))
     assert out.read_text() == "tiles 0"
-    assert single.exists()
+    assert not single.exists()
 
 
 def test_merge_skips_existing_output(fake_pmtiles, tmp_path, monkeypatch):

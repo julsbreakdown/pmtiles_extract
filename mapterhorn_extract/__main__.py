@@ -16,8 +16,8 @@ from . import (
     extract_zone,
     load_index,
     parse_extent,
-    plan,
     plan_base,
+    plan_zone,
     zones_from_geojson,
 )
 
@@ -71,35 +71,38 @@ def _extent_zone(bbox, path: Path) -> Path:
 
 
 def _dry_run(all_zones, zones, archives) -> int:
-    code = 0
+    covered = _covered_zones(zones, archives)
     base = plan_base(bbox_from_geojson(all_zones), region=all_zones, archives=archives)
-    if base is not None:
+    if covered and base is not None:
         print(f"base {base.name} z{base.minzoom}-{base.maxzoom}")
-    for zone in zones:
-        jobs = plan(bbox_from_geojson(zone.region), zone.maxzoom, region=zone.region, archives=archives)
-        if not jobs:
-            print(f"zone {zone.name}: no Mapterhorn archive above zoom 12", file=sys.stderr)
-            code = 1
-            continue
+    for zone, jobs in covered:
         maxzoom = max(job.maxzoom for job in jobs)
         print(f"zone {zone.name} z13-{maxzoom}: {', '.join(job.name for job in jobs)}")
-    return code
+    return 0 if len(covered) == len(zones) else 1
 
 
 def _extract(all_zones, zones, archives, args) -> int:
-    code = 0
+    covered = _covered_zones(zones, archives)
+    if not covered:
+        return 1
     options = {"archives": archives, "binary": args.pmtiles_bin, "threads": args.threads}
     base = extract_base(all_zones, args.output_dir, **options)
     if base is not None:
         print(base)
+    for zone, _ in covered:
+        print(extract_zone(zone, args.output_dir, **options))
+    return 0 if len(covered) == len(zones) else 1
+
+
+def _covered_zones(zones, archives):
+    covered = []
     for zone in zones:
-        output = extract_zone(zone, args.output_dir, **options)
-        if output is None:
+        jobs = plan_zone(zone, archives)
+        if jobs:
+            covered.append((zone, jobs))
+        else:
             print(f"zone {zone.name}: no Mapterhorn archive above zoom 12", file=sys.stderr)
-            code = 1
-            continue
-        print(output)
-    return code
+    return covered
 
 
 if __name__ == "__main__":

@@ -85,3 +85,13 @@ def test_extract_failure_exits_1(index_path, fake_pmtiles, tmp_path, monkeypatch
     ])
     assert code == 1
     assert "boom" in capsys.readouterr().err
+
+
+def test_no_coverage_extracts_nothing(index_path, fake_pmtiles, tmp_path, capsys):
+    code = main([
+        "--extent=-30,40,-29,41", "--maxzoom", "15", "--index", str(index_path),
+        "--output-dir", str(tmp_path / "out"), "--pmtiles-bin", str(fake_pmtiles),
+    ])
+    assert code == 1
+    assert "no Mapterhorn archive above zoom 12" in capsys.readouterr().err
+    assert not (tmp_path / "out").exists()

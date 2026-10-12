@@ -34,13 +34,29 @@ def bbox_from_geojson(path: str | Path) -> BBox:
     polygons = [g for g in _geometries(data) if g["type"] in POLYGON_TYPES]
     if not polygons:
         raise ValueError(f"{path}: no Polygon or MultiPolygon geometry")
-    xs: list[float] = []
-    ys: list[float] = []
-    for polygon in polygons:
-        for x, y, *_ in _positions(polygon["coordinates"]):
-            xs.append(x)
-            ys.append(y)
-    return check_bbox((min(xs), min(ys), max(xs), max(ys)))
+    bboxes = [_bbox_of(polygon["coordinates"]) for polygon in polygons]
+    return check_bbox((
+        min(b[0] for b in bboxes),
+        min(b[1] for b in bboxes),
+        max(b[2] for b in bboxes),
+        max(b[3] for b in bboxes),
+    ))
+
+
+def part_bboxes(path: str | Path) -> list[BBox]:
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    parts = []
+    for geometry in _geometries(data):
+        if geometry["type"] == "Polygon":
+            parts.append(_bbox_of(geometry["coordinates"]))
+        elif geometry["type"] == "MultiPolygon":
+            parts.extend(_bbox_of(polygon) for polygon in geometry["coordinates"])
+    return parts
+
+
+def _bbox_of(coords: list) -> BBox:
+    xs, ys = zip(*((x, y) for x, y, *_ in _positions(coords)))
+    return (min(xs), min(ys), max(xs), max(ys))
 
 
 def _geometries(obj: dict) -> Iterator[dict]:

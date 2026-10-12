@@ -24,6 +24,7 @@ from .mapterhorn_extract import (
     extract_base,
     extract_zone,
     load_index,
+    plan_zone,
     zones_from_geojson,
 )
 
@@ -111,24 +112,29 @@ class ExtractMapterhornAlgorithm(QgsProcessingAlgorithm):
         except (ValueError, OSError) as error:
             raise QgsProcessingException(str(error)) from error
 
+        covered = []
+        for zone in zones:
+            if plan_zone(zone, options["archives"]):
+                covered.append(zone)
+            else:
+                feedback.reportError(f"Zone {zone.name}: no Mapterhorn archive above zoom 12, skipped.")
+        if not covered:
+            raise QgsProcessingException("No zone is covered by Mapterhorn above zoom 12.")
+
         outputs = []
-        steps = len(zones) + 1
+        steps = len(covered) + 1
         try:
             feedback.pushInfo("Base file: zooms 0-12 over all zones")
             base = extract_base(all_zones, output_dir, **options)
             if base is not None:
                 outputs.append(str(base))
             feedback.setProgress(100 / steps)
-            for done, zone in enumerate(zones, start=2):
+            for done, zone in enumerate(covered, start=2):
                 feedback.pushInfo(f"Zone {zone.name}: zooms 13-{zone.maxzoom}")
-                path = extract_zone(zone, output_dir, **options)
-                if path is None:
-                    feedback.reportError(f"Zone {zone.name}: no Mapterhorn archive above zoom 12, skipped.")
-                else:
-                    outputs.append(str(path))
+                outputs.append(str(extract_zone(zone, output_dir, **options)))
                 feedback.setProgress(100 * done / steps)
-        except ExtractCancelled:
-            feedback.pushInfo("Cancelled.")
+        except ExtractCancelled as error:
+            raise QgsProcessingException("Cancelled.") from error
         except (PmtilesNotFound, ExtractError) as error:
             raise QgsProcessingException(str(error)) from error
         return {self.OUTPUT_DIR: str(output_dir), self.OUTPUT_FILES: outputs}
