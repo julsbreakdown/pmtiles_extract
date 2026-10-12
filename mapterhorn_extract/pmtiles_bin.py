@@ -37,3 +37,7 @@ def extract_command(binary: str, job: Job, output: Path, threads: int) -> list[s
     else:
         command.append("--bbox=" + ",".join(str(c) for c in job.bbox))
     return command
+
+
+def merge_command(binary: str, inputs: list[Path], output: Path) -> list[str]:
+    return [binary, "merge", *(str(path) for path in inputs), str(output)]

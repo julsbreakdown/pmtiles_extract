@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import shutil
 import subprocess
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
@@ -10,7 +11,7 @@ from pathlib import Path
 
 from .area import BBox
 from .index import Archive, load_index
-from .pmtiles_bin import extract_command, find_pmtiles
+from .pmtiles_bin import extract_command, find_pmtiles, merge_command
 
 HIGH_ZOOM_MIN = 13
 
@@ -75,6 +76,24 @@ def plan(
     return sorted(jobs, key=lambda job: job.name)
 
 
+def plan_base(bbox: BBox, region: str | Path | None = None, archives: list[Archive] | None = None) -> Job | None:
+    if archives is None:
+        archives = load_index()
+    planet = next((a for a in archives if a.min_zoom == 0), None)
+    if planet is None:
+        return None
+    region_path = str(Path(region).resolve()) if region is not None else None
+    return Job(
+        name=planet.name,
+        url=planet.url,
+        minzoom=0,
+        maxzoom=planet.max_zoom,
+        bbox=tuple(bbox),
+        region=region_path,
+        area_key=_area_key(bbox, region_path),
+    )
+
+
 def _intersects(a: BBox, b: BBox) -> bool:
     return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
 
@@ -98,18 +117,46 @@ def extract_one(
     if output.exists():
         logger.info("%s already extracted, skipping", output.name)
         return output
-    output_dir.mkdir(parents=True, exist_ok=True)
+    binary = find_pmtiles(binary)
+    logger.info("extracting %s z%d-%d", job.name, job.minzoom, job.maxzoom)
+    _write_atomically(output, lambda part: extract_command(binary, job, part, threads), should_stop)
+    return output
+
+
+def merge(
+    inputs: list[Path],
+    output: Path,
+    binary: str | None = None,
+    should_stop: Callable[[], bool] | None = None,
+) -> Path:
+    output = Path(output)
+    if output.exists():
+        logger.info("%s already merged, skipping", output.name)
+        return output
+    if len(inputs) == 1:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(inputs[0], output)
+        return output
+    binary = find_pmtiles(binary)
+    logger.info("merging %d extracts into %s", len(inputs), output.name)
+    _write_atomically(output, lambda part: merge_command(binary, inputs, part), should_stop)
+    return output
+
+
+def _write_atomically(
+    output: Path,
+    command_for: Callable[[Path], list[str]],
+    should_stop: Callable[[], bool] | None,
+) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
     part = output.with_name(output.stem + ".part.pmtiles")
     part.unlink(missing_ok=True)
-    command = extract_command(find_pmtiles(binary), job, part, threads)
-    logger.info("extracting %s z%d-%d", job.name, job.minzoom, job.maxzoom)
     try:
-        _run(command, should_stop)
+        _run(command_for(part), should_stop)
     except BaseException:
         part.unlink(missing_ok=True)
         raise
     os.replace(part, output)
-    return output
 
 
 def _run(command: list[str], should_stop: Callable[[], bool] | None) -> None:
@@ -122,6 +169,6 @@ def _run(command: list[str], should_stop: Callable[[], bool] | None) -> None:
                 if should_stop is not None and should_stop():
                     process.terminate()
                     process.wait()
-                    raise ExtractCancelled(f"extract cancelled: {command[2]}") from None
+                    raise ExtractCancelled(f"pmtiles {command[1]} cancelled") from None
     if process.returncode != 0:
-        raise ExtractError(f"pmtiles extract failed ({process.returncode}): {stderr.strip()}")
+        raise ExtractError(f"pmtiles {command[1]} failed ({process.returncode}): {stderr.strip()}")

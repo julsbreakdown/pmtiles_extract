@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from mapterhorn_extract import ExtractCancelled, ExtractError, PmtilesNotFound, extract_one, plan
+from mapterhorn_extract import ExtractCancelled, ExtractError, PmtilesNotFound, extract_one, merge, plan
 from mapterhorn_extract.pmtiles_bin import find_pmtiles
 
 LYON = (4.80, 45.70, 4.90, 45.80)
@@ -63,3 +63,43 @@ def test_missing_binary_raises(archives, tmp_path):
 def test_binary_found_on_path(fake_pmtiles, monkeypatch):
     monkeypatch.setenv("PATH", str(fake_pmtiles.parent))
     assert find_pmtiles() == str(fake_pmtiles)
+
+
+def _inputs(tmp_path, count):
+    paths = []
+    for n in range(count):
+        path = tmp_path / f"in{n}.pmtiles"
+        path.write_text(f"tiles {n}")
+        paths.append(path)
+    return paths
+
+
+def test_merge_runs_pmtiles_merge(fake_pmtiles, tmp_path):
+    inputs = _inputs(tmp_path, 2)
+    out = merge(inputs, tmp_path / "zone.pmtiles", binary=str(fake_pmtiles))
+    args = json.loads(out.read_text())
+    assert args[0] == "merge"
+    assert args[1:3] == [str(p) for p in inputs]
+    assert all(p.exists() for p in inputs)
+
+
+def test_merge_single_input_is_copied(fake_pmtiles, tmp_path):
+    [single] = _inputs(tmp_path, 1)
+    out = merge([single], tmp_path / "zone.pmtiles", binary=str(fake_pmtiles))
+    assert out.read_text() == "tiles 0"
+    assert single.exists()
+
+
+def test_merge_skips_existing_output(fake_pmtiles, tmp_path, monkeypatch):
+    inputs = _inputs(tmp_path, 2)
+    first = merge(inputs, tmp_path / "zone.pmtiles", binary=str(fake_pmtiles))
+    monkeypatch.setenv("FAKE_PMTILES_MODE", "fail")
+    assert merge(inputs, tmp_path / "zone.pmtiles", binary=str(fake_pmtiles)) == first
+
+
+def test_failed_merge_leaves_no_file(fake_pmtiles, tmp_path, monkeypatch):
+    inputs = _inputs(tmp_path, 2)
+    monkeypatch.setenv("FAKE_PMTILES_MODE", "fail")
+    with pytest.raises(ExtractError, match="boom"):
+        merge(inputs, tmp_path / "out" / "zone.pmtiles", binary=str(fake_pmtiles))
+    assert list((tmp_path / "out").iterdir()) == []

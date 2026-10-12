@@ -1375,3 +1375,37 @@ Then remove both test layers (MCP `remove_layer`) and `rm -r /tmp/mapterhorn_qgi
 git add mapterhorn_pmtiles
 git commit -m "feat: add QGIS Processing algorithm mapterhorn:extract"
 ```
+
+---
+
+## Addendum (2026-10-12): base file + one merged file per zone
+
+Spec change in `DEMANDE.md` ("Comportement cible"): one base file z0-12 from `planet.pmtiles` over all zones, plus one file per zone z13 to the zone's max zoom, merged with `pmtiles merge` (go-pmtiles 1.31.2, disjoint inputs only). Per-zone max zoom from a field/property, a default zoom, and a "same zoom for all" switch.
+
+### Task 7: `plan_base()` and `merge()`
+
+**Files:** Modify `mapterhorn_extract/extract.py`, `mapterhorn_extract/pmtiles_bin.py`, `mapterhorn_extract/__init__.py`, `tests/conftest.py` (fake handles `merge`: output is the last argument). Test: `tests/test_plan.py`, `tests/test_extract.py`.
+
+**Produces:** `plan_base(bbox, region=None, archives=None) -> Job | None` (archive with `min_zoom == 0`, job z0 to its `max_zoom`); `merge_command(binary, inputs, output) -> list[str]`; `merge(inputs: list[Path], output: Path, binary=None, should_stop=None) -> Path` (skip if output exists, single input copied, atomic `.part`, never deletes inputs).
+
+Tests: `test_plan_base_targets_planet`, `test_plan_base_without_planet_is_none`, `test_merge_runs_pmtiles_merge`, `test_merge_single_input_is_copied`, `test_merge_skips_existing_output`, `test_failed_merge_leaves_no_file`.
+
+### Task 8: zones
+
+**Files:** Create `mapterhorn_extract/zones.py`, `tests/test_zones.py`. Modify `mapterhorn_extract/__init__.py`.
+
+**Produces:** `Zone(name: str, maxzoom: int, region: Path)`; `zones_from_geojson(path, default_maxzoom, work_dir, same_zoom=False) -> tuple[Path, list[Zone]]` (all-zones region file + one region file per polygon feature; name from `name` property sanitized for file names, else `zone_<n>`; duplicate names, maxzoom < 13, or no polygon raise `ValueError`); `extract_base(region, output_dir, archives=None, binary=None, threads=16, should_stop=None) -> Path | None`; `extract_zone(zone, output_dir, archives=None, binary=None, threads=16, should_stop=None) -> Path | None` (per-archive extracts in `<output_dir>/.parts/<stem>/`, merged to `<name>_z13-<effective max>_<area_key>.pmtiles`, parts removed).
+
+Tests: names and defaults, per-zone and default zoom, `same_zoom` override, zoom < 13 rejected, duplicate names rejected, non-polygon features ignored, `extract_base` output name, `extract_zone` across two archives merges and cleans parts, `extract_zone` skips existing, no coverage returns None, live merge test skipped unless `MAPTERHORN_LIVE_PMTILES` points to a real binary.
+
+### Task 9: CLI on zones
+
+**Files:** Modify `mapterhorn_extract/__main__.py`, `tests/test_cli.py`.
+
+`--geojson` zones (properties `name`, `maxzoom`) or `--extent` (one zone `extent`), `--maxzoom` default zoom, `--same-zoom`; prints base path then zone paths; `--dry-run` prints `base planet.pmtiles z0-12` and `zone <name> z13-<max>: <archives>`; a zone without coverage is reported on stderr and makes the exit code 1.
+
+### Task 10: QGIS algorithm on zones
+
+**Files:** Modify `mapterhorn_pmtiles/algorithm.py`, `mapterhorn_pmtiles/compat.py`.
+
+New parameters `NAME_FIELD` (optional field), `MAXZOOM_FIELD` (optional numeric field), `SAME_ZOOM` (boolean, default false); `MAXZOOM` becomes the default zoom (13 to 22). Output `OUTPUT_FILES` = base then zones. Live check through the MCP: two zones (Lyon in EPSG:2154 at z14, a zone across lon 5.625 at z13), then `SAME_ZOOM`.

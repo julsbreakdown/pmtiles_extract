@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from mapterhorn_extract.extract import Job, plan
+from mapterhorn_extract.extract import Job, plan, plan_base
 
 LYON = (4.80, 45.70, 4.90, 45.80)
 PARIS = (2.25, 48.80, 2.45, 48.95)
@@ -73,3 +73,14 @@ def test_different_region_gives_different_output_name(archives, region_file):
 def test_job_round_trips_through_json(archives):
     [job] = plan(LYON, 15, archives=archives)
     assert Job.from_dict(json.loads(json.dumps(job.to_dict()))) == job
+
+
+def test_plan_base_targets_planet(archives):
+    job = plan_base(LYON, archives=archives)
+    assert job.name == "planet.pmtiles"
+    assert (job.minzoom, job.maxzoom) == (0, 12)
+    assert job.output_name.startswith("planet_z0-12_")
+
+
+def test_plan_base_without_planet_is_none(archives):
+    assert plan_base(LYON, archives=[a for a in archives if a.name != "planet.pmtiles"]) is None

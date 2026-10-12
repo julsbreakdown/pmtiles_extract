@@ -14,7 +14,7 @@ args = sys.argv[1:]
 mode = os.environ.get("FAKE_PMTILES_MODE", "ok")
 if mode == "slow":
     time.sleep(30)
-with open(args[2], "w") as out:
+with open(args[-1] if args[0] == "merge" else args[2], "w") as out:
     json.dump(args, out)
 if mode == "fail":
     print("boom", file=sys.stderr)

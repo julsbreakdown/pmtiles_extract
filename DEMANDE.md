@@ -25,7 +25,10 @@ API en deux temps, pour le mapping dynamique de tâches Airflow :
 - `plan(area, maxzoom) -> list[Job]` : archives z6 intersectant l'emprise, avec URL et zoom max plafonné par archive ; `Job` sérialisable (XCom) ;
 - `extract_one(job, output_dir) -> Path` : un `pmtiles extract`, sauté si la sortie existe.
 
-DAG type : `plan` puis `extract_one.expand(job=...)`, une tâche relançable par archive. Le provider QGIS et la CLI appellent `plan` puis bouclent sur `extract_one`.
+- `plan_base(bbox, region) -> Job | None` : le job z0..12 sur `planet.pmtiles` ;
+- `merge(inputs, output) -> Path` : un `pmtiles merge`, sauté si la sortie existe.
+
+DAG type : `plan` puis `extract_one.expand(job=...)` par zone, puis `merge`. Le provider QGIS et la CLI passent par `extract_base` et `extract_zone`, qui enchaînent ces briques.
 
 Hors périmètre pour l'instant : le DAG Airflow et l'export S3 (outillage existant côté Nexsis). La lib écrit sur disque local et retourne les chemins ; l'API ci-dessus doit simplement rester compatible avec ce DAG futur.
 
@@ -51,27 +54,37 @@ Points relevés à la lecture :
 - `--minzoom=--maxzoom=MAX_ZOOM` : n'extrait **qu'un seul niveau**, pas la plage 13..N ni les niveaux 0..12.
 - `BBOX_A_REMPLACER` est vide (la boucle sur les bbox est commentée) : seule `--region` filtre réellement.
 - Les tuiles z6 sont codées en dur au lieu d'être déduites de l'emprise.
-- `pmtiles merge` n'est pas une sous-commande de go-pmtiles à ma connaissance : à vérifier (version ou fork utilisé).
+- `pmtiles merge` existe (go-pmtiles 1.31.2) et n'accepte que des archives **disjointes**.
 
 ## Comportement cible
 
 Entrées :
 
-- emprise, au choix :
-  - GeoJSON polygone : dans QGIS, une couche vecteur choisie dans l'arbre des couches, exportée en GeoJSON EPSG:4326 temporaire ; en CLI, `--geojson zone.geojson` (passé à `pmtiles extract --region`) ;
-  - étendue : en CLI, `--extent min_lon,min_lat,max_lon,max_lat` (passé à `pmtiles extract --bbox`) ;
-- zoom max (>= 13) ;
-- fichier de sortie `.pmtiles` ;
-- options : dossier de cache, nombre de threads de téléchargement.
+- zones, au choix :
+  - polygones : dans QGIS, une couche vecteur de l'arbre des couches, une entité par zone, reprojetée en EPSG:4326 ; en CLI, `--geojson zones.geojson` (propriétés optionnelles `name` et `maxzoom` par entité) ;
+  - étendue : en CLI, `--extent min_lon,min_lat,max_lon,max_lat`, une seule zone nommée `extent` ;
+- zoom max par zone : un champ de la couche (QGIS) ou la propriété `maxzoom` (CLI) ;
+- zoom max par défaut, utilisé pour les zones sans valeur ;
+- « même zoom pour toutes les zones » : ignore le champ et applique le zoom par défaut partout ;
+- nom de zone : un champ de la couche (QGIS) ou la propriété `name` (CLI), sinon `zone_<n>` ;
+- dossier de sortie, nombre de threads de téléchargement.
+
+Sortie :
+
+- **un fichier de base** `planet_z0-12_<clé>.pmtiles` : z0..12 extrait de `planet.pmtiles` sur l'union des zones ;
+- **un fichier par zone** `<nom>_z13-<zoom>_<clé>.pmtiles` : z13..zoom de la zone (plafonné par le `max_zoom` de chaque archive), fusion par `pmtiles merge` des extraits de chaque archive z6 touchée. Les extraits d'une même zone viennent d'archives différentes, donc disjoints.
+
+`<clé>` dépend de la géométrie : une zone modifiée produit un nouveau fichier au lieu de réutiliser l'ancien.
 
 Traitement :
 
-1. reprojeter l'emprise en EPSG:4326 (côté QGIS, avant export GeoJSON) ;
-2. lire `download_urls.json` et retenir les archives z6 dont la bbox intersecte l'emprise (bbox du GeoJSON ou étendue) ;
-3. pour chacune, `pmtiles extract` z13..min(MAX_ZOOM, `max_zoom` de l'archive) sur l'emprise (cache : ne pas retélécharger un extrait existant) ;
-4. retourner la liste des fichiers produits.
+1. reprojeter les zones en EPSG:4326 (côté QGIS) ;
+2. base : `pmtiles extract planet.pmtiles` z0..12 avec `--region` = toutes les zones ;
+3. pour chaque zone : archives z6 dont la bbox intersecte celle de la zone, `pmtiles extract` z13..min(zoom, `max_zoom` de l'archive) avec `--region` = la zone, puis `pmtiles merge` en un fichier ;
+4. un fichier final déjà présent est sauté ; les extraits intermédiaires sont supprimés après la fusion ;
+5. retourner la liste des fichiers produits.
 
-Sortie : **multi-fichiers**, un PMTiles par archive z6 source, pas de fusion. z0..12 reste servi par l'existant.
+Une zone avec un zoom < 13 est une erreur : la base couvre déjà 0..12.
 
 ## Binaire `pmtiles`
 
@@ -95,7 +108,8 @@ plugin_pmtiles/
 │   ├── index.py                 # download_urls.json -> Archive
 │   ├── area.py                  # --geojson / --extent -> bbox validée EPSG:4326
 │   ├── pmtiles_bin.py           # localisation du binaire, commande extract
-│   ├── extract.py               # plan(), extract_one(), Job
+│   ├── extract.py               # plan(), plan_base(), extract_one(), merge(), Job
+│   ├── zones.py                 # Zone, zones_from_geojson, extract_base, extract_zone
 │   └── __main__.py              # CLI : --geojson | --extent, --maxzoom, --output-dir
 ├── mapterhorn_pmtiles/          # plugin QGIS
 │   ├── mapterhorn_extract -> ../mapterhorn_extract   # symlink, résolu au zip
