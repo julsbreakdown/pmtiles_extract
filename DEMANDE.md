@@ -1,0 +1,116 @@
+# Extraction PMTiles Mapterhorn haute résolution (Nexsis)
+
+## Demande
+
+Demandeur : Alexandre Gacon (Camptocamp), projet Nexsis.
+
+Encapsuler les appels à la CLI `pmtiles` sur les données [Mapterhorn](https://mapterhorn.com) pour produire **un seul fichier PMTiles** sur une zone donnée, contenant :
+
+- les niveaux par défaut (z0 à z12, déjà couverts aujourd'hui) ;
+- les niveaux plus détaillés (z13 et au-delà), jusqu'à un zoom max choisi par l'utilisateur.
+
+Cas d'usage : aller plus loin que le niveau principal sur des **sous-zones** (pas sur la France entière à haute résolution).
+
+Forme retenue : **une lib Python + un provider Processing QGIS** qui l'appelle. La lib doit rester utilisable hors QGIS : côté Nexsis, elle sera appelée depuis **Airflow**.
+
+Contraintes induites par Airflow :
+
+- paquet installable par pip, sans dépendance QGIS ;
+- relançable sans effet de bord (une archive déjà extraite est sautée) ;
+- retourne les chemins produits, journalise via `logging` ;
+- la lib ne fait que l'extraction ; tout post-traitement (hillshade, publication) vit dans le DAG.
+
+API en deux temps, pour le mapping dynamique de tâches Airflow :
+
+- `plan(area, maxzoom) -> list[Job]` : archives z6 intersectant l'emprise, avec URL et zoom max plafonné par archive ; `Job` sérialisable (XCom) ;
+- `extract_one(job, output_dir) -> Path` : un `pmtiles extract`, sauté si la sortie existe.
+
+DAG type : `plan` puis `extract_one.expand(job=...)`, une tâche relançable par archive. Le provider QGIS et la CLI appellent `plan` puis bouclent sur `extract_one`.
+
+Hors périmètre pour l'instant : le DAG Airflow et l'export S3 (outillage existant côté Nexsis). La lib écrit sur disque local et retourne les chemins ; l'API ci-dessus doit simplement rester compatible avec ce DAG futur.
+
+## Contexte données Mapterhorn
+
+- z0 à z12 : archive globale `planet.pmtiles` (355 Go).
+- z13+ : archives découpées par tuile z6, `https://download.mapterhorn.com/6-{x}-{y}.pmtiles`. Il faut donc interroger les fichiers correspondant à l'emprise demandée.
+- Index officiel : `https://download.mapterhorn.com/download_urls.json` (version, et par archive : `url`, `md5sum`, `size`, bbox `min_lon`/`min_lat`/`max_lon`/`max_lat`, `min_zoom`, `max_zoom`). Utilisé par la [carte de couverture](https://mapterhorn.com/coverage/).
+- Le zoom max **varie par archive z6** (selon la résolution source) : 13, 14, 15, 16, 17 ou 18. Sur la France : z17 partout, z18 sur `6-33-21` et `6-33-22` (Alpes). Les archives France font de 50 à 615 Go chacune, d'où l'extraction ciblée.
+- Couverture fine par source : tuiles vectorielles `https://single-archive-tiles.mapterhorn.com/coverage.json` (couche `coverage`, champ `source`).
+
+## Existant : `bash_hillshade_geojson.sh`
+
+Script bash qui :
+
+1. prend un `MAX_ZOOM >= 13` en paramètre ;
+2. boucle sur des tuiles z6 codées en dur (`x` 31..33, `y` 21..23, soit la France) ;
+3. lance `pmtiles extract` sur chaque archive distante avec `--region=decoupe_france.json`, `--download-threads=16`, et saute les fichiers déjà présents ;
+4. fusionne les résultats avec `pmtiles merge` en `hillshade_full_<MAX_ZOOM>.pmtiles`.
+
+Points relevés à la lecture :
+
+- `--minzoom=--maxzoom=MAX_ZOOM` : n'extrait **qu'un seul niveau**, pas la plage 13..N ni les niveaux 0..12.
+- `BBOX_A_REMPLACER` est vide (la boucle sur les bbox est commentée) : seule `--region` filtre réellement.
+- Les tuiles z6 sont codées en dur au lieu d'être déduites de l'emprise.
+- `pmtiles merge` n'est pas une sous-commande de go-pmtiles à ma connaissance : à vérifier (version ou fork utilisé).
+
+## Comportement cible
+
+Entrées :
+
+- emprise, au choix :
+  - GeoJSON polygone : dans QGIS, une couche vecteur choisie dans l'arbre des couches, exportée en GeoJSON EPSG:4326 temporaire ; en CLI, `--geojson zone.geojson` (passé à `pmtiles extract --region`) ;
+  - étendue : en CLI, `--extent min_lon,min_lat,max_lon,max_lat` (passé à `pmtiles extract --bbox`) ;
+- zoom max (>= 13) ;
+- fichier de sortie `.pmtiles` ;
+- options : dossier de cache, nombre de threads de téléchargement.
+
+Traitement :
+
+1. reprojeter l'emprise en EPSG:4326 (côté QGIS, avant export GeoJSON) ;
+2. lire `download_urls.json` et retenir les archives z6 dont la bbox intersecte l'emprise (bbox du GeoJSON ou étendue) ;
+3. pour chacune, `pmtiles extract` z13..min(MAX_ZOOM, `max_zoom` de l'archive) sur l'emprise (cache : ne pas retélécharger un extrait existant) ;
+4. retourner la liste des fichiers produits.
+
+Sortie : **multi-fichiers**, un PMTiles par archive z6 source, pas de fusion. z0..12 reste servi par l'existant.
+
+## Binaire `pmtiles`
+
+Non embarqué. Chemin lu dans un paramètre QGIS (et `--pmtiles-bin` en CLI), à défaut `pmtiles` dans le PATH. Erreur explicite si introuvable.
+
+## Compatibilité QGIS
+
+QGIS 3.34 LTR et plus, et QGIS 4 (Qt6) : imports via `qgis.PyQt` uniquement, pas d'API Qt5-only, `qgisMaximumVersion=4.99` dans `metadata.txt`.
+
+## Développement et validation
+
+- lib : tests unitaires (`plan` sur l'index réel mis en cache, `extract_one` avec un faux binaire) ;
+- plugin : validé dans une session QGIS 4.2 vivante via le serveur MCP QGIS. Plugin lié par symlink dans `~/.local/share/QGIS/QGIS4/profiles/jwe/python/plugins/`, rechargé avec `reload_plugin`, algorithme lancé avec `execute_processing` sur une petite zone (quelques km², zoom 13–14) pour garder des extraits légers.
+
+## Structure proposée
+
+```
+plugin_pmtiles/
+├── pyproject.toml               # paquet pip mapterhorn-extract (lib seule)
+├── mapterhorn_extract/          # lib, stdlib uniquement, sans dépendance QGIS
+│   ├── index.py                 # download_urls.json -> Archive
+│   ├── area.py                  # --geojson / --extent -> bbox validée EPSG:4326
+│   ├── pmtiles_bin.py           # localisation du binaire, commande extract
+│   ├── extract.py               # plan(), extract_one(), Job
+│   └── __main__.py              # CLI : --geojson | --extent, --maxzoom, --output-dir
+├── mapterhorn_pmtiles/          # plugin QGIS
+│   ├── mapterhorn_extract -> ../mapterhorn_extract   # symlink, résolu au zip
+│   ├── metadata.txt
+│   ├── __init__.py
+│   ├── plugin.py                # enregistrement du provider
+│   ├── provider.py
+│   ├── compat.py                # enums QGIS 3.34 / 4
+│   └── algorithm.py             # QgsProcessingAlgorithm mapterhorn:extract
+└── tests/
+```
+
+Le chargement des résultats comme couches QGIS est reporté : un PMTiles Terrarium s'affiche comme une image RGB, pas comme un MNT.
+
+## Questions ouvertes
+
+- Consommateur Nexsis : fichiers servis tels quels (MapLibre `raster-dem`) ou convertis en hillshade dans le DAG ? Hors périmètre de la lib, mais à clarifier avec Alexandre.
+- Volume : prévoir une estimation de taille / nombre de tuiles avant lancement ?
