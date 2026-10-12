@@ -93,3 +93,9 @@ def test_archives_are_selected_per_polygon_part(archives, tmp_path):
     region.write_text(json.dumps({"type": "MultiPolygon", "coordinates": [[chamonix], [reims]]}))
     jobs = plan((4.00, 45.85, 6.95, 49.30), 15, region=region, archives=archives)
     assert [j.name for j in jobs] == ["6-32-21.pmtiles", "6-33-22.pmtiles"]
+
+
+def test_plan_base_label_names_the_output(archives):
+    job = plan_base(LYON, archives=archives, label="france")
+    assert job.output_name.startswith("france_z0-12_")
+    assert Job.from_dict(json.loads(json.dumps(job.to_dict()))) == job

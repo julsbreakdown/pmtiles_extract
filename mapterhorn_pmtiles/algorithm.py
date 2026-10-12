@@ -8,6 +8,7 @@ from qgis.core import (
     QgsProcessingException,
     QgsProcessingOutputMultipleLayers,
     QgsProcessingParameterBoolean,
+    QgsProcessingParameterExtent,
     QgsProcessingParameterFeatureSource,
     QgsProcessingParameterField,
     QgsProcessingParameterFile,
@@ -35,6 +36,7 @@ class ExtractMapterhornAlgorithm(QgsProcessingAlgorithm):
     MAXZOOM_FIELD = "MAXZOOM_FIELD"
     MAXZOOM = "MAXZOOM"
     SAME_ZOOM = "SAME_ZOOM"
+    BASE_EXTENT = "BASE_EXTENT"
     PMTILES_BIN = "PMTILES_BIN"
     THREADS = "THREADS"
     OUTPUT_DIR = "OUTPUT_DIR"
@@ -49,7 +51,7 @@ class ExtractMapterhornAlgorithm(QgsProcessingAlgorithm):
     def shortHelpString(self):
         return (
             "Each polygon of the input layer is a zone. Produces one base PMTiles with zooms 0 to 12 "
-            "over all zones, and one PMTiles per zone from zoom 13 to the zone's max zoom, capped by "
+            "over France (or the base extent when set), and one PMTiles per zone from zoom 13 to the zone's max zoom, capped by "
             "what Mapterhorn provides there. The zone max zoom comes from the max zoom field, or the "
             "default max zoom when the field is empty or 'same max zoom for all zones' is checked. "
             "Requires the pmtiles binary (go-pmtiles 1.31+), from the parameter or the PATH."
@@ -74,6 +76,9 @@ class ExtractMapterhornAlgorithm(QgsProcessingAlgorithm):
         )
         self.addParameter(QgsProcessingParameterNumber(self.MAXZOOM, "Default max zoom", INTEGER, 15, False, 13, 22))
         self.addParameter(QgsProcessingParameterBoolean(self.SAME_ZOOM, "Same max zoom for all zones", False))
+        self.addParameter(
+            QgsProcessingParameterExtent(self.BASE_EXTENT, "Base file extent, zooms 0-12 (empty: France)", optional=True)
+        )
         self.addParameter(
             QgsProcessingParameterFile(
                 self.PMTILES_BIN,
@@ -101,13 +106,19 @@ class ExtractMapterhornAlgorithm(QgsProcessingAlgorithm):
             "should_stop": feedback.isCanceled,
         }
         output_dir = Path(self.parameterAsString(parameters, self.OUTPUT_DIR, context))
+        base_bbox = None
+        if parameters.get(self.BASE_EXTENT):
+            extent = self.parameterAsExtent(
+                parameters, self.BASE_EXTENT, context, QgsCoordinateReferenceSystem("EPSG:4326")
+            )
+            base_bbox = (extent.xMinimum(), extent.yMinimum(), extent.xMaximum(), extent.yMaximum())
 
         work_dir = Path(QgsProcessingUtils.generateTempFilename("mapterhorn_zones"))
         work_dir.mkdir(parents=True)
         zones_path = work_dir / "input.geojson"
         _write_zones(source, context, zones_path, name_field, zoom_field)
         try:
-            all_zones, zones = zones_from_geojson(zones_path, maxzoom, work_dir, same_zoom=same_zoom)
+            zones = zones_from_geojson(zones_path, maxzoom, work_dir, same_zoom=same_zoom)
             options["archives"] = load_index()
         except (ValueError, OSError) as error:
             raise QgsProcessingException(str(error)) from error
@@ -124,8 +135,8 @@ class ExtractMapterhornAlgorithm(QgsProcessingAlgorithm):
         outputs = []
         steps = len(covered) + 1
         try:
-            feedback.pushInfo("Base file: zooms 0-12 over all zones")
-            base = extract_base(all_zones, output_dir, **options)
+            feedback.pushInfo("Base file: zooms 0-12 over " + ("the base extent" if base_bbox else "France"))
+            base = extract_base(output_dir, bbox=base_bbox, **options)
             if base is not None:
                 outputs.append(str(base))
             feedback.setProgress(100 / steps)

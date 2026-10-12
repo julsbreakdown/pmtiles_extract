@@ -24,7 +24,7 @@ def test_dry_run_lists_base_and_zones(index_path, tmp_path, capsys):
     code = main(["--geojson", str(zones), "--maxzoom", "14", "--index", str(index_path), "--dry-run"])
     assert code == 0
     assert capsys.readouterr().out.splitlines() == [
-        "base planet.pmtiles z0-12",
+        "base france z0-12: planet.pmtiles",
         "zone lyon z13-16: 6-32-22.pmtiles",
         "zone zone_2 z13-14: 6-32-22.pmtiles, 6-33-22.pmtiles",
     ]
@@ -73,7 +73,7 @@ def test_extracts_base_then_zones(index_path, fake_pmtiles, tmp_path, capsys):
     ])
     printed = [Path(line) for line in capsys.readouterr().out.strip().splitlines()]
     assert code == 0
-    assert [p.name.split("_z")[0] for p in printed] == ["planet", "lyon", "cross"]
+    assert [p.name.split("_z")[0] for p in printed] == ["france", "lyon", "cross"]
     assert all(p.exists() for p in printed)
 
 
@@ -95,3 +95,19 @@ def test_no_coverage_extracts_nothing(index_path, fake_pmtiles, tmp_path, capsys
     assert code == 1
     assert "no Mapterhorn archive above zoom 12" in capsys.readouterr().err
     assert not (tmp_path / "out").exists()
+
+
+def test_base_only_without_zones(index_path, capsys):
+    assert main(["--index", str(index_path), "--dry-run"]) == 0
+    assert capsys.readouterr().out.splitlines() == ["base france z0-12: planet.pmtiles"]
+
+
+def test_base_extent_override(index_path, capsys):
+    main(["--base-extent", "4.8,45.7,4.9,45.8", "--index", str(index_path), "--dry-run"])
+    assert capsys.readouterr().out.splitlines() == ["base base z0-12: planet.pmtiles"]
+
+
+def test_zones_need_maxzoom(index_path):
+    with pytest.raises(SystemExit) as exc:
+        main(["--extent", "4.8,45.7,4.9,45.8", "--index", str(index_path)])
+    assert exc.value.code == 2

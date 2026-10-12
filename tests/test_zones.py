@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from mapterhorn_extract.zones import Zone, extract_base, extract_zone, zones_from_geojson
+from mapterhorn_extract.zones import FRANCE_EXTENT, Zone, extract_base, extract_zone, zones_from_geojson
 
 LYON_RING = [[4.8, 45.7], [4.9, 45.7], [4.9, 45.8], [4.8, 45.7]]
 CROSS_RING = [[5.60, 45.70], [5.65, 45.70], [5.65, 45.72], [5.60, 45.70]]
@@ -29,15 +29,14 @@ def _zone(tmp_path, ring, name="zone", maxzoom=14):
 
 def test_zones_take_name_and_zoom_from_properties(tmp_path):
     path = _zones_file(tmp_path, _feature(LYON_RING, name="Lyon centre", maxzoom=16), _feature(CROSS_RING))
-    all_zones, zones = zones_from_geojson(path, 14, tmp_path / "work")
+    zones = zones_from_geojson(path, 14, tmp_path / "work")
     assert [(z.name, z.maxzoom) for z in zones] == [("Lyon_centre", 16), ("zone_2", 14)]
-    assert len(json.loads(all_zones.read_text())["features"]) == 2
     assert len(json.loads(zones[0].region.read_text())["features"]) == 1
 
 
 def test_same_zoom_overrides_zone_zoom(tmp_path):
     path = _zones_file(tmp_path, _feature(LYON_RING, maxzoom=16), _feature(CROSS_RING, maxzoom=None))
-    _, zones = zones_from_geojson(path, 15, tmp_path / "work", same_zoom=True)
+    zones = zones_from_geojson(path, 15, tmp_path / "work", same_zoom=True)
     assert [z.maxzoom for z in zones] == [15, 15]
 
 
@@ -56,7 +55,7 @@ def test_duplicate_zone_names_are_rejected(tmp_path):
 def test_non_polygon_features_are_ignored(tmp_path):
     point = {"type": "Feature", "properties": {"name": "pt"}, "geometry": {"type": "Point", "coordinates": [4.8, 45.7]}}
     path = _zones_file(tmp_path, point, _feature(LYON_RING, name="lyon"))
-    _, zones = zones_from_geojson(path, 14, tmp_path / "work")
+    zones = zones_from_geojson(path, 14, tmp_path / "work")
     assert [z.name for z in zones] == ["lyon"]
 
 
@@ -66,12 +65,25 @@ def test_file_without_polygon_is_rejected(tmp_path):
         zones_from_geojson(path, 14, tmp_path / "work")
 
 
-def test_extract_base_covers_z0_to_12(archives, fake_pmtiles, tmp_path):
-    zone = _zone(tmp_path, LYON_RING)
-    out = extract_base(zone.region, tmp_path / "out", archives=archives, binary=str(fake_pmtiles))
-    assert out.name.startswith("planet_z0-12_")
+def test_base_defaults_to_france(archives, fake_pmtiles, tmp_path):
+    out = extract_base(tmp_path / "out", archives=archives, binary=str(fake_pmtiles))
+    assert out.name.startswith("france_z0-12_")
     args = json.loads(out.read_text())
-    assert {"--minzoom=0", "--maxzoom=12"} <= set(args)
+    assert {"--minzoom=0", "--maxzoom=12", "--bbox=-5.15,42.33,8.23,51.1"} <= set(args)
+    assert FRANCE_EXTENT == (-5.15, 42.33, 8.23, 51.10)
+
+
+def test_base_extent_can_be_overridden(archives, fake_pmtiles, tmp_path):
+    out = extract_base(tmp_path / "out", bbox=(4.8, 45.7, 4.9, 45.8), archives=archives, binary=str(fake_pmtiles))
+    assert out.name.startswith("base_z0-12_")
+    assert "--bbox=4.8,45.7,4.9,45.8" in json.loads(out.read_text())
+
+
+def test_base_region_can_be_a_polygon(archives, fake_pmtiles, tmp_path):
+    zone = _zone(tmp_path, LYON_RING)
+    out = extract_base(tmp_path / "out", region=zone.region, archives=archives, binary=str(fake_pmtiles))
+    assert out.name.startswith("base_z0-12_")
+    assert f"--region={zone.region.resolve()}" in json.loads(out.read_text())
 
 
 def test_extract_zone_across_archives_merges_and_cleans_parts(archives, fake_pmtiles, tmp_path):

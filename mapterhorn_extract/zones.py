@@ -7,9 +7,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from .area import POLYGON_TYPES, bbox_from_geojson
+from .area import POLYGON_TYPES, BBox, bbox_from_geojson
 from .extract import HIGH_ZOOM_MIN, Job, extract_one, merge, plan, plan_base
 from .index import Archive
+
+
+FRANCE_EXTENT: BBox = (-5.15, 42.33, 8.23, 51.10)
 
 
 @dataclass(frozen=True)
@@ -24,7 +27,7 @@ def zones_from_geojson(
     default_maxzoom: int,
     work_dir: str | Path,
     same_zoom: bool = False,
-) -> tuple[Path, list[Zone]]:
+) -> list[Zone]:
     features = [f for f in _features(json.loads(Path(path).read_text(encoding="utf-8"))) if _is_polygon(f)]
     if not features:
         raise ValueError(f"{path}: no Polygon or MultiPolygon feature")
@@ -43,18 +46,31 @@ def zones_from_geojson(
         region = _write_regions(work_dir / "zones" / f"{name}.geojson", [feature])
         bbox_from_geojson(region)
         zones.append(Zone(name=name, maxzoom=maxzoom, region=region))
-    return _write_regions(work_dir / "all_zones.geojson", features), zones
+    return zones
+
+
+def base_job(
+    region: str | Path | None = None,
+    bbox: BBox | None = None,
+    archives: list[Archive] | None = None,
+) -> Job | None:
+    if region is not None:
+        return plan_base(bbox_from_geojson(region), region=region, archives=archives, label="base")
+    if bbox is not None:
+        return plan_base(bbox, archives=archives, label="base")
+    return plan_base(FRANCE_EXTENT, archives=archives, label="france")
 
 
 def extract_base(
-    region: str | Path,
     output_dir: str | Path,
+    region: str | Path | None = None,
+    bbox: BBox | None = None,
     archives: list[Archive] | None = None,
     binary: str | None = None,
     threads: int = 16,
     should_stop: Callable[[], bool] | None = None,
 ) -> Path | None:
-    job = plan_base(bbox_from_geojson(region), region=region, archives=archives)
+    job = base_job(region=region, bbox=bbox, archives=archives)
     if job is None:
         return None
     return extract_one(job, output_dir, binary=binary, threads=threads, should_stop=should_stop)

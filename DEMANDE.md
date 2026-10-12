@@ -71,7 +71,7 @@ Entrées :
 
 Sortie :
 
-- **un fichier de base** `planet_z0-12_<clé>.pmtiles` : z0..12 extrait de `planet.pmtiles` sur l'union des zones ;
+- **un fichier de base** `france_z0-12_<clé>.pmtiles` : z0..12 extrait de `planet.pmtiles` sur la France (`-5.15,42.33,8.23,51.10`), ou `base_z0-12_<clé>.pmtiles` sur une autre emprise donnée par l'utilisateur ;
 - **un fichier par zone** `<nom>_z13-<zoom>_<clé>.pmtiles` : z13..zoom de la zone (plafonné par le `max_zoom` de chaque archive), fusion par `pmtiles merge` des extraits de chaque archive z6 touchée. Les extraits d'une même zone viennent d'archives différentes, donc disjoints.
 
 `<clé>` dépend de la géométrie : une zone modifiée produit un nouveau fichier au lieu de réutiliser l'ancien.
@@ -79,7 +79,7 @@ Sortie :
 Traitement :
 
 1. reprojeter les zones en EPSG:4326 (côté QGIS) ;
-2. base : `pmtiles extract planet.pmtiles` z0..12 avec `--region` = toutes les zones ;
+2. base : `pmtiles extract planet.pmtiles` z0..12 sur la France par défaut (`--bbox`), ou sur l'emprise de base choisie ;
 3. pour chaque zone : archives z6 dont la bbox intersecte celle de la zone, `pmtiles extract` z13..min(zoom, `max_zoom` de l'archive) avec `--region` = la zone, puis `pmtiles merge` en un fichier ;
 4. un fichier final déjà présent est sauté ; les extraits intermédiaires sont supprimés après la fusion ;
 5. retourner la liste des fichiers produits.

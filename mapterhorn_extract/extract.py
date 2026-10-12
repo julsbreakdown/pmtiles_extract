@@ -34,10 +34,12 @@ class Job:
     bbox: BBox
     region: str | None
     area_key: str
+    label: str | None = None
 
     @property
     def output_name(self) -> str:
-        return f"{Path(self.name).stem}_z{self.minzoom}-{self.maxzoom}_{self.area_key}.pmtiles"
+        stem = self.label or Path(self.name).stem
+        return f"{stem}_z{self.minzoom}-{self.maxzoom}_{self.area_key}.pmtiles"
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -76,7 +78,12 @@ def plan(
     return sorted(jobs, key=lambda job: job.name)
 
 
-def plan_base(bbox: BBox, region: str | Path | None = None, archives: list[Archive] | None = None) -> Job | None:
+def plan_base(
+    bbox: BBox,
+    region: str | Path | None = None,
+    archives: list[Archive] | None = None,
+    label: str | None = None,
+) -> Job | None:
     if archives is None:
         archives = load_index()
     planet = next((a for a in archives if a.min_zoom == 0), None)
@@ -91,6 +98,7 @@ def plan_base(bbox: BBox, region: str | Path | None = None, archives: list[Archi
         bbox=tuple(bbox),
         region=region_path,
         area_key=_area_key(bbox, region_path),
+        label=label,
     )
 
 
