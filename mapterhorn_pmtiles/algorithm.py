@@ -54,7 +54,13 @@ class ExtractMapterhornAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(QgsProcessingParameterFeatureSource(self.INPUT, "Area (polygon layer)", [POLYGON]))
         self.addParameter(QgsProcessingParameterNumber(self.MAXZOOM, "Max zoom", INTEGER, 15, False, 13, 18))
         self.addParameter(
-            QgsProcessingParameterFile(self.PMTILES_BIN, "pmtiles binary (empty: use PATH)", optional=True)
+            QgsProcessingParameterFile(
+                self.PMTILES_BIN,
+                "pmtiles binary (empty: use PATH)",
+                optional=True,
+                # The default "*.*" filter rejects extensionless binaries such as pmtiles.
+                fileFilter="All files (*)",
+            )
         )
         self.addParameter(QgsProcessingParameterNumber(self.THREADS, "Download threads", INTEGER, 16, False, 1, 64))
         self.addParameter(QgsProcessingParameterFolderDestination(self.OUTPUT_DIR, "Output folder"))
