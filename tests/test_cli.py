@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -5,19 +6,45 @@ import pytest
 from mapterhorn_extract.__main__ import main
 
 LYON_RING = [[4.8, 45.7], [4.9, 45.7], [4.9, 45.8], [4.8, 45.7]]
+CROSS_RING = [[5.60, 45.70], [5.65, 45.70], [5.65, 45.72], [5.60, 45.70]]
 
 
-def test_dry_run_lists_jobs(index_path, capsys):
-    code = main(["--extent", "2.25,48.80,2.45,48.95", "--maxzoom", "15", "--index", str(index_path), "--dry-run"])
-    lines = capsys.readouterr().out.splitlines()
+def _zones(tmp_path, *zones):
+    features = [
+        {"type": "Feature", "properties": props, "geometry": {"type": "Polygon", "coordinates": [ring]}}
+        for ring, props in zones
+    ]
+    path = tmp_path / "zones.geojson"
+    path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+    return path
+
+
+def test_dry_run_lists_base_and_zones(index_path, tmp_path, capsys):
+    zones = _zones(tmp_path, (LYON_RING, {"name": "lyon", "maxzoom": 16}), (CROSS_RING, {}))
+    code = main(["--geojson", str(zones), "--maxzoom", "14", "--index", str(index_path), "--dry-run"])
     assert code == 0
-    assert [line.split()[0] for line in lines] == ["6-32-21.pmtiles", "6-32-22.pmtiles"]
-    assert "z13-15" in lines[0]
+    assert capsys.readouterr().out.splitlines() == [
+        "base planet.pmtiles z0-12",
+        "zone lyon z13-16: 6-32-22.pmtiles",
+        "zone zone_2 z13-14: 6-32-22.pmtiles, 6-33-22.pmtiles",
+    ]
 
 
-def test_no_coverage_exits_1(index_path, capsys):
-    assert main(["--extent=-30,40,-29,41", "--maxzoom", "15", "--index", str(index_path)]) == 1
-    assert "No Mapterhorn archive" in capsys.readouterr().err
+def test_same_zoom_applies_default_to_every_zone(index_path, tmp_path, capsys):
+    zones = _zones(tmp_path, (LYON_RING, {"name": "lyon", "maxzoom": 16}), (CROSS_RING, {"maxzoom": 13}))
+    main(["--geojson", str(zones), "--maxzoom", "15", "--same-zoom", "--index", str(index_path), "--dry-run"])
+    lines = capsys.readouterr().out.splitlines()
+    assert [line.split(":")[0] for line in lines[1:]] == ["zone lyon z13-15", "zone zone_2 z13-15"]
+
+
+def test_extent_is_one_zone(index_path, capsys):
+    main(["--extent", "2.25,48.80,2.45,48.95", "--maxzoom", "15", "--index", str(index_path), "--dry-run"])
+    assert capsys.readouterr().out.splitlines()[1] == "zone extent z13-15: 6-32-21.pmtiles, 6-32-22.pmtiles"
+
+
+def test_zone_without_coverage_exits_1(index_path, capsys):
+    assert main(["--extent=-30,40,-29,41", "--maxzoom", "15", "--index", str(index_path), "--dry-run"]) == 1
+    assert "zone extent: no Mapterhorn archive above zoom 12" in capsys.readouterr().err
 
 
 def test_geojson_and_extent_are_exclusive(tmp_path):
@@ -38,16 +65,16 @@ def test_missing_geojson_is_usage_error(index_path, tmp_path):
     assert exc.value.code == 2
 
 
-def test_extracts_with_geojson(index_path, fake_pmtiles, region_file, tmp_path, capsys):
-    region = region_file(LYON_RING)
+def test_extracts_base_then_zones(index_path, fake_pmtiles, tmp_path, capsys):
+    zones = _zones(tmp_path, (LYON_RING, {"name": "lyon"}), (CROSS_RING, {"name": "cross"}))
     code = main([
-        "--geojson", str(region), "--maxzoom", "14", "--index", str(index_path),
+        "--geojson", str(zones), "--maxzoom", "14", "--index", str(index_path),
         "--output-dir", str(tmp_path / "out"), "--pmtiles-bin", str(fake_pmtiles),
     ])
-    printed = capsys.readouterr().out.strip().splitlines()
+    printed = [Path(line) for line in capsys.readouterr().out.strip().splitlines()]
     assert code == 0
-    assert len(printed) == 1
-    assert Path(printed[0]).exists()
+    assert [p.name.split("_z")[0] for p in printed] == ["planet", "lyon", "cross"]
+    assert all(p.exists() for p in printed)
 
 
 def test_extract_failure_exits_1(index_path, fake_pmtiles, tmp_path, monkeypatch, capsys):
