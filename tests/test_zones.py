@@ -102,9 +102,10 @@ def test_extract_zone_skips_existing_output(archives, fake_pmtiles, tmp_path, mo
     assert extract_zone(zone, tmp_path / "out", archives=archives, binary=str(fake_pmtiles)) == first
 
 
-def test_extract_zone_without_coverage_is_none(archives, fake_pmtiles, tmp_path):
+def test_extract_zone_without_coverage_raises(archives, fake_pmtiles, tmp_path):
     zone = _zone(tmp_path, OCEAN_RING, name="sea")
-    assert extract_zone(zone, tmp_path / "out", archives=archives, binary=str(fake_pmtiles)) is None
+    with pytest.raises(ValueError, match="sea"):
+        extract_zone(zone, tmp_path / "out", archives=archives, binary=str(fake_pmtiles))
 
 
 @pytest.mark.skipif(not os.environ.get("MAPTERHORN_LIVE_PMTILES"), reason="set MAPTERHORN_LIVE_PMTILES to a pmtiles binary")
@@ -113,5 +114,5 @@ def test_live_zone_across_archives(tmp_path):
     ring = [[5.620, 45.700], [5.630, 45.700], [5.630, 45.705], [5.620, 45.700]]
     zone = _zone(tmp_path, ring, name="live", maxzoom=13)
     out = extract_zone(zone, tmp_path / "out", binary=binary, threads=4)
-    assert out is not None and out.stat().st_size > 0
+    assert out.stat().st_size > 0
     assert sorted(p.name for p in Path(tmp_path / "out").iterdir()) == [out.name]

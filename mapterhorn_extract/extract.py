@@ -49,7 +49,7 @@ class Job:
         return cls(**{**data, "bbox": tuple(data["bbox"])})
 
 
-def plan(
+def _plan(
     bbox: BBox,
     maxzoom: int,
     region: str | Path | None = None,
@@ -78,17 +78,17 @@ def plan(
     return sorted(jobs, key=lambda job: job.name)
 
 
-def plan_base(
+def _plan_base(
     bbox: BBox,
     region: str | Path | None = None,
     archives: list[Archive] | None = None,
     label: str | None = None,
-) -> Job | None:
+) -> Job:
     if archives is None:
         archives = load_index()
     planet = next((a for a in archives if a.min_zoom == 0), None)
     if planet is None:
-        return None
+        raise ValueError("the Mapterhorn index has no planet archive")
     region_path = str(Path(region).resolve()) if region is not None else None
     return Job(
         name=planet.name,

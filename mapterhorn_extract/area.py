@@ -67,9 +67,6 @@ def _geometries(obj: dict) -> Iterator[dict]:
     elif kind == "Feature":
         if obj.get("geometry"):
             yield from _geometries(obj["geometry"])
-    elif kind == "GeometryCollection":
-        for geometry in obj["geometries"]:
-            yield from _geometries(geometry)
     elif kind is not None:
         yield obj
 

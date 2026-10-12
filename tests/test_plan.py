@@ -2,7 +2,9 @@ import json
 
 import pytest
 
-from mapterhorn_extract.extract import Job, plan, plan_base
+from mapterhorn_extract.extract import Job
+from mapterhorn_extract.extract import _plan as plan
+from mapterhorn_extract.extract import _plan_base as plan_base
 
 LYON = (4.80, 45.70, 4.90, 45.80)
 PARIS = (2.25, 48.80, 2.45, 48.95)
@@ -82,8 +84,9 @@ def test_plan_base_targets_planet(archives):
     assert job.output_name.startswith("planet_z0-12_")
 
 
-def test_plan_base_without_planet_is_none(archives):
-    assert plan_base(LYON, archives=[a for a in archives if a.name != "planet.pmtiles"]) is None
+def test_plan_base_without_planet_raises(archives):
+    with pytest.raises(ValueError, match="planet"):
+        plan_base(LYON, archives=[a for a in archives if a.name != "planet.pmtiles"])
 
 
 def test_archives_are_selected_per_polygon_part(archives, tmp_path):

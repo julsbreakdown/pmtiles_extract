@@ -22,13 +22,12 @@ Contraintes induites par Airflow :
 
 API en deux temps, pour le mapping dynamique de tâches Airflow :
 
-- `plan(area, maxzoom) -> list[Job]` : archives z6 intersectant l'emprise, avec URL et zoom max plafonné par archive ; `Job` sérialisable (XCom) ;
-- `extract_one(job, output_dir) -> Path` : un `pmtiles extract`, sauté si la sortie existe.
-
-- `plan_base(bbox, region) -> Job | None` : le job z0..12 sur `planet.pmtiles` ;
+- `plan_zone(zone) -> list[Job]` : archives z6 intersectant la zone, avec URL et zoom max plafonné par archive ; `Job` sérialisable (XCom) ;
+- `base_job(region, bbox) -> Job` : le job z0..12 sur `planet.pmtiles`, France par défaut ;
+- `extract_one(job, output_dir) -> Path` : un `pmtiles extract`, sauté si la sortie existe ;
 - `merge(inputs, output) -> Path` : un `pmtiles merge`, sauté si la sortie existe.
 
-DAG type : `plan` puis `extract_one.expand(job=...)` par zone, puis `merge`. Le provider QGIS et la CLI passent par `extract_base` et `extract_zone`, qui enchaînent ces briques.
+DAG type : `plan_zone` puis `extract_one.expand(job=...)` par zone, puis `merge`. Le provider QGIS et la CLI passent par `extract_base` et `extract_zone`, qui enchaînent ces briques.
 
 Hors périmètre pour l'instant : le DAG Airflow et l'export S3 (outillage existant côté Nexsis). La lib écrit sur disque local et retourne les chemins ; l'API ci-dessus doit simplement rester compatible avec ce DAG futur.
 
@@ -98,7 +97,7 @@ QGIS 3.34 LTR et plus, et QGIS 4 (Qt6) : imports via `qgis.PyQt` uniquement, pas
 
 ## Développement et validation
 
-- lib : tests unitaires (`plan` sur l'index réel mis en cache, `extract_one` avec un faux binaire) ;
+- lib : tests unitaires (`plan_zone` sur l'index réel mis en cache, `extract_one` avec un faux binaire) ;
 - plugin : validé dans une session QGIS 4.2 vivante via le serveur MCP QGIS. Plugin lié par symlink dans `~/.local/share/QGIS/QGIS4/profiles/jwe/python/plugins/`, rechargé avec `reload_plugin`, algorithme lancé avec `execute_processing` sur une petite zone (quelques km², zoom 13–14) pour garder des extraits légers.
 
 ## Structure proposée
@@ -110,8 +109,8 @@ plugin_pmtiles/
 │   ├── index.py                 # download_urls.json -> Archive
 │   ├── area.py                  # --geojson / --extent -> bbox validée EPSG:4326
 │   ├── pmtiles_bin.py           # localisation du binaire, commande extract
-│   ├── extract.py               # plan(), plan_base(), extract_one(), merge(), Job
-│   ├── zones.py                 # Zone, zones_from_geojson, extract_base, extract_zone
+│   ├── extract.py               # extract_one(), merge(), Job
+│   ├── zones.py                 # Zone, zones_from_geojson, plan_zone, base_job, extract_base, extract_zone
 │   └── __main__.py              # CLI : sous-commandes base et zones
 ├── mapterhorn_pmtiles/          # plugin QGIS
 │   ├── mapterhorn_extract -> ../mapterhorn_extract   # symlink, résolu au zip

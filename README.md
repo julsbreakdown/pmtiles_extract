@@ -155,7 +155,7 @@ Lower-level pieces, for one task per archive in an orchestrator such as Airflow:
 - `plan_zone(zone, archives) -> list[Job]`: one job per Mapterhorn archive the zone touches; `Job.to_dict()` / `Job.from_dict()` serialize it;
 - `extract_one(job, output_dir) -> Path`: one `pmtiles extract`;
 - `merge(paths, output) -> Path`: one `pmtiles merge` of a zone's extracts;
-- `base_job(region=None, bbox=None, archives=None) -> Job | None`: the z0 to 12 job, France when neither is given (`FRANCE_EXTENT`).
+- `base_job(region=None, bbox=None, archives=None) -> Job`: the z0 to 12 job, France when neither is given (`FRANCE_EXTENT`).
 
 All long-running calls accept `should_stop`, a callable polled every half second to cancel the running `pmtiles` process.
 

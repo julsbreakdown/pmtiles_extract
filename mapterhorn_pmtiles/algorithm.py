@@ -63,7 +63,7 @@ class _MapterhornAlgorithm(QgsProcessingAlgorithm):
     def _run(self, parameters, context, extract):
         output_dir = Path(self.parameterAsString(parameters, self.OUTPUT_DIR, context))
         try:
-            outputs = [str(path) for path in extract(output_dir) if path is not None]
+            outputs = [str(path) for path in extract(output_dir)]
         except ExtractCancelled as error:
             raise QgsProcessingException("Cancelled.") from error
         except (PmtilesNotFound, ExtractError, ValueError, OSError) as error:

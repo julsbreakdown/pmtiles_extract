@@ -3,7 +3,8 @@ import time
 
 import pytest
 
-from mapterhorn_extract import ExtractCancelled, ExtractError, PmtilesNotFound, extract_one, merge, plan
+from mapterhorn_extract import ExtractCancelled, ExtractError, PmtilesNotFound, extract_one, merge
+from mapterhorn_extract.extract import _plan as plan
 from mapterhorn_extract.pmtiles_bin import find_pmtiles
 
 LYON = (4.80, 45.70, 4.90, 45.80)

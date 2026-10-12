@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .area import POLYGON_TYPES, BBox, bbox_from_geojson
-from .extract import HIGH_ZOOM_MIN, Job, extract_one, merge, plan, plan_base
+from .extract import HIGH_ZOOM_MIN, Job, _plan, _plan_base, extract_one, merge
 from .index import Archive
 
 
@@ -53,12 +53,12 @@ def base_job(
     region: str | Path | None = None,
     bbox: BBox | None = None,
     archives: list[Archive] | None = None,
-) -> Job | None:
+) -> Job:
     if region is not None:
-        return plan_base(bbox_from_geojson(region), region=region, archives=archives, label="base")
+        return _plan_base(bbox_from_geojson(region), region=region, archives=archives, label="base")
     if bbox is not None:
-        return plan_base(bbox, archives=archives, label="base")
-    return plan_base(FRANCE_EXTENT, archives=archives, label="france")
+        return _plan_base(bbox, archives=archives, label="base")
+    return _plan_base(FRANCE_EXTENT, archives=archives, label="france")
 
 
 def extract_base(
@@ -69,15 +69,12 @@ def extract_base(
     binary: str | None = None,
     threads: int = 16,
     should_stop: Callable[[], bool] | None = None,
-) -> Path | None:
-    job = base_job(region=region, bbox=bbox, archives=archives)
-    if job is None:
-        return None
-    return extract_one(job, output_dir, binary=binary, threads=threads, should_stop=should_stop)
+) -> Path:
+    return extract_one(base_job(region=region, bbox=bbox, archives=archives), output_dir, binary=binary, threads=threads, should_stop=should_stop)
 
 
 def plan_zone(zone: Zone, archives: list[Archive] | None = None) -> list[Job]:
-    return plan(bbox_from_geojson(zone.region), zone.maxzoom, region=zone.region, archives=archives)
+    return _plan(bbox_from_geojson(zone.region), zone.maxzoom, region=zone.region, archives=archives)
 
 
 def extract_zone(
@@ -87,10 +84,10 @@ def extract_zone(
     binary: str | None = None,
     threads: int = 16,
     should_stop: Callable[[], bool] | None = None,
-) -> Path | None:
+) -> Path:
     jobs = plan_zone(zone, archives)
     if not jobs:
-        return None
+        raise ValueError(f"zone {zone.name}: no Mapterhorn archive above zoom 12")
     output_dir = Path(output_dir)
     maxzoom = max(job.maxzoom for job in jobs)
     output = output_dir / f"{zone.name}_z{HIGH_ZOOM_MIN}-{maxzoom}_{jobs[0].area_key}.pmtiles"

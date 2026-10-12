@@ -65,12 +65,9 @@ def _base(args) -> int:
     archives = load_index(args.index)
     if args.dry_run:
         job = base_job(archives=archives, **area)
-        if job is not None:
-            print(f"base {job.label} z{job.minzoom}-{job.maxzoom}: {job.name}")
+        print(f"base {job.label} z{job.minzoom}-{job.maxzoom}: {job.name}")
         return 0
-    path = extract_base(args.output_dir, archives=archives, binary=args.pmtiles_bin, threads=args.threads, **area)
-    if path is not None:
-        print(path)
+    print(extract_base(args.output_dir, archives=archives, binary=args.pmtiles_bin, threads=args.threads, **area))
     return 0
 
 

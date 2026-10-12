@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 
 INDEX_URL = "https://download.mapterhorn.com/download_urls.json"
@@ -14,7 +14,6 @@ USER_AGENT = "mapterhorn-extract/0.1"
 class Archive:
     name: str
     url: str
-    size: int
     min_lon: float
     min_lat: float
     max_lon: float
@@ -28,17 +27,7 @@ class Archive:
 
     @classmethod
     def from_item(cls, item: dict) -> Archive:
-        return cls(
-            name=item["name"],
-            url=item["url"],
-            size=item["size"],
-            min_lon=item["min_lon"],
-            min_lat=item["min_lat"],
-            max_lon=item["max_lon"],
-            max_lat=item["max_lat"],
-            min_zoom=item["min_zoom"],
-            max_zoom=item["max_zoom"],
-        )
+        return cls(**{field.name: item[field.name] for field in fields(cls)})
 
 
 def load_index(source: str | Path = INDEX_URL) -> list[Archive]:
