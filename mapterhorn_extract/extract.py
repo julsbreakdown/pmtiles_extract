@@ -41,6 +41,13 @@ class Job:
         stem = self.label or Path(self.name).stem
         return f"{stem}_z{self.minzoom}-{self.maxzoom}_{self.area_key}.pmtiles"
 
+    @property
+    def source(self) -> str:
+        if self.minzoom < HIGH_ZOOM_MIN:
+            return f"global archive, zooms 0-{HIGH_ZOOM_MIN - 1} only"
+        _, x, y = Path(self.name).stem.split("-")
+        return f"high-resolution archive, zoom-6 tile {x}/{y}"
+
     def to_dict(self) -> dict:
         return asdict(self)
 
@@ -129,7 +136,7 @@ def extract_one(
         logger.info("%s already extracted, skipping", output.name)
         return output
     binary = find_pmtiles(binary)
-    logger.info("extracting %s z%d-%d", job.name, job.minzoom, job.maxzoom)
+    logger.info("extracting %s z%d-%d (%s)", job.name, job.minzoom, job.maxzoom, job.source)
     _write_atomically(output, lambda part: extract_command(binary, job, part, threads), should_stop)
     return output
 

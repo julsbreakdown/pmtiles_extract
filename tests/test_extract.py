@@ -5,6 +5,7 @@ import pytest
 
 from mapterhorn_extract import ExtractCancelled, ExtractError, PmtilesNotFound, extract_one, merge
 from mapterhorn_extract.extract import _plan as plan
+from mapterhorn_extract.extract import _plan_base
 from mapterhorn_extract.pmtiles_bin import find_pmtiles
 
 LYON = (4.80, 45.70, 4.90, 45.80)
@@ -104,3 +105,11 @@ def test_failed_merge_leaves_no_file(fake_pmtiles, tmp_path, monkeypatch):
     with pytest.raises(ExtractError, match="boom"):
         merge(inputs, tmp_path / "out" / "zone.pmtiles", binary=str(fake_pmtiles))
     assert list((tmp_path / "out").iterdir()) == []
+
+
+def test_extract_log_names_the_archive_kind(archives, fake_pmtiles, tmp_path, caplog):
+    caplog.set_level("INFO")
+    extract_one(_plan_base(LYON, archives=archives, minzoom=10, maxzoom=12), tmp_path, binary=str(fake_pmtiles))
+    extract_one(_job(archives), tmp_path, binary=str(fake_pmtiles))
+    assert "extracting planet.pmtiles z10-12 (global archive, zooms 0-12 only)" in caplog.text
+    assert "extracting 6-32-22.pmtiles z13-14 (high-resolution archive, zoom-6 tile 32/22)" in caplog.text

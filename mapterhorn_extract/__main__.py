@@ -80,11 +80,13 @@ def _zones(args, work_dir: Path) -> int:
     if not covered:
         return 1
     for zone, jobs in covered:
+        minzoom = min(job.minzoom for job in jobs)
+        maxzoom = max(job.maxzoom for job in jobs)
+        plan = f"zone {zone.name} z{minzoom}-{maxzoom}: {', '.join(job.name for job in jobs)}"
         if args.dry_run:
-            minzoom = min(job.minzoom for job in jobs)
-            maxzoom = max(job.maxzoom for job in jobs)
-            print(f"zone {zone.name} z{minzoom}-{maxzoom}: {', '.join(job.name for job in jobs)}")
+            print(plan)
         else:
+            print(plan, file=sys.stderr)
             print(extract_zone(zone, args.output_dir, archives=archives, binary=args.pmtiles_bin, threads=args.threads))
     return 0 if len(covered) == len(zones) else 1
 

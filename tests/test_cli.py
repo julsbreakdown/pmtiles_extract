@@ -82,8 +82,10 @@ def test_extracts_zones_without_base(index_path, fake_pmtiles, tmp_path, capsys)
         "zones", "--geojson", str(zones), "--maxzoom", "14", "--index", str(index_path),
         "--output-dir", str(tmp_path / "out"), "--pmtiles-bin", str(fake_pmtiles),
     ])
-    printed = [Path(line) for line in capsys.readouterr().out.strip().splitlines()]
+    captured = capsys.readouterr()
+    printed = [Path(line) for line in captured.out.strip().splitlines()]
     assert code == 0
+    assert "zone lyon z13-14: 6-32-22.pmtiles" in captured.err
     assert [p.name.split("_z")[0] for p in printed] == ["lyon", "cross"]
     assert all(p.exists() for p in printed)
     assert not list((tmp_path / "out").glob("france_*"))

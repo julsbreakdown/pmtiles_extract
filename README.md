@@ -123,6 +123,17 @@ uv run mapterhorn-extract zones --geojson zones.geojson --maxzoom 15 --output-di
 
 Produces one `<name>_z<min>-<max>_<key>.pmtiles` per zone, never the base file.
 
+Before downloading, it prints each zone's plan, then one line per archive read:
+
+```console
+zone extent z10-13: planet.pmtiles, 6-32-22.pmtiles
+extracting planet.pmtiles z10-12 (global archive, zooms 0-12 only)
+extracting 6-32-22.pmtiles z13-13 (high-resolution archive, zoom-6 tile 32/22)
+merging 2 extracts into extent_z10-13_31f7423b.pmtiles
+```
+
+Only the tiles inside the zone are fetched (HTTP range requests), never a whole archive.
+
 - `--geojson`: EPSG:4326 polygons, one zone per feature, optional properties `name` and `maxzoom`;
 - `--extent min_lon,min_lat,max_lon,max_lat`: instead of `--geojson`, a single zone named `extent`;
 - `--minzoom`: first zoom of every zone file, default 13. Below 13 also pulls zooms from `planet.pmtiles`, e.g. `--minzoom 0` for a zone file that stands alone;
