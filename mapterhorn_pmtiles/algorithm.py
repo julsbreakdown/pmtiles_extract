@@ -105,6 +105,7 @@ class ExtractZonesAlgorithm(_MapterhornAlgorithm):
     INPUT = "INPUT"
     NAME_FIELD = "NAME_FIELD"
     MAXZOOM_FIELD = "MAXZOOM_FIELD"
+    MINZOOM = "MINZOOM"
     MAXZOOM = "MAXZOOM"
     SAME_ZOOM = "SAME_ZOOM"
 
@@ -112,14 +113,15 @@ class ExtractZonesAlgorithm(_MapterhornAlgorithm):
         return "extract_zones"
 
     def displayName(self):
-        return "Extract Mapterhorn PMTiles per zone (zooms 13+)"
+        return "Extract Mapterhorn PMTiles per zone"
 
     def shortHelpString(self):
         return (
-            "Each polygon of the input layer is a zone. Produces one PMTiles per zone from zoom 13 to the "
-            "zone's max zoom, capped by what Mapterhorn provides there. The zone max zoom comes from the max "
-            "zoom field, or the default max zoom when the field is empty or 'same max zoom for all zones' is "
-            "checked. Zooms 0 to 12 come from the base algorithm. "
+            "Each polygon of the input layer is a zone. Produces one PMTiles per zone from the min zoom to the "
+            "zone's max zoom, capped by what Mapterhorn provides there. Zooms below 13 come from the planet "
+            "archive, 13 and above from the high-resolution archives, merged into one file. The zone max zoom "
+            "comes from the max zoom field, or the default max zoom when the field is empty or 'same max zoom "
+            "for all zones' is checked. "
             "Requires the pmtiles binary (go-pmtiles 1.31+), from the parameter or the PATH."
         )
 
@@ -137,7 +139,8 @@ class ExtractZonesAlgorithm(_MapterhornAlgorithm):
                 optional=True,
             )
         )
-        self.addParameter(QgsProcessingParameterNumber(self.MAXZOOM, "Default max zoom", INTEGER, 15, False, 13, 22))
+        self.addParameter(QgsProcessingParameterNumber(self.MINZOOM, "Min zoom", INTEGER, 13, False, 0, 22))
+        self.addParameter(QgsProcessingParameterNumber(self.MAXZOOM, "Default max zoom", INTEGER, 15, False, 0, 22))
         self.addParameter(QgsProcessingParameterBoolean(self.SAME_ZOOM, "Same max zoom for all zones", False))
         self._add_common_parameters()
 
@@ -147,6 +150,7 @@ class ExtractZonesAlgorithm(_MapterhornAlgorithm):
             raise QgsProcessingException(self.invalidSourceError(parameters, self.INPUT))
         name_field = self.parameterAsString(parameters, self.NAME_FIELD, context)
         zoom_field = self.parameterAsString(parameters, self.MAXZOOM_FIELD, context)
+        minzoom = self.parameterAsInt(parameters, self.MINZOOM, context)
         maxzoom = self.parameterAsInt(parameters, self.MAXZOOM, context)
         same_zoom = self.parameterAsBoolean(parameters, self.SAME_ZOOM, context)
         options = self._options(parameters, context, feedback)
@@ -156,7 +160,7 @@ class ExtractZonesAlgorithm(_MapterhornAlgorithm):
         zones_path = work_dir / "input.geojson"
         _write_zones(source, context, zones_path, name_field, zoom_field)
         try:
-            zones = zones_from_geojson(zones_path, maxzoom, work_dir, same_zoom=same_zoom)
+            zones = zones_from_geojson(zones_path, maxzoom, work_dir, same_zoom=same_zoom, minzoom=minzoom)
             options["archives"] = load_index()
         except (ValueError, OSError) as error:
             raise QgsProcessingException(str(error)) from error
@@ -172,7 +176,7 @@ class ExtractZonesAlgorithm(_MapterhornAlgorithm):
 
         def extract(output_dir):
             for done, zone in enumerate(covered):
-                feedback.pushInfo(f"Zone {zone.name}: zooms 13-{zone.maxzoom}")
+                feedback.pushInfo(f"Zone {zone.name}: zooms {zone.minzoom}-{zone.maxzoom}")
                 yield extract_zone(zone, output_dir, **options)
                 feedback.setProgress(100 * (done + 1) / len(covered))
 

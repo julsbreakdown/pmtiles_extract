@@ -43,7 +43,8 @@ def main(argv: list[str] | None = None) -> int:
     zones_area = zones.add_mutually_exclusive_group(required=True)
     zones_area.add_argument("--geojson", type=Path, help="EPSG:4326 polygon zones, optional properties: name, maxzoom")
     zones_area.add_argument("--extent", help=EXTENT_HELP + "; a single zone named extent")
-    zones.add_argument("--maxzoom", type=int, required=True, help="zoom for zones without maxzoom, >= 13")
+    zones.add_argument("--minzoom", type=int, default=13, help="first zoom of every zone file (default 13); below 13 comes from planet")
+    zones.add_argument("--maxzoom", type=int, required=True, help="zoom for zones without maxzoom, >= --minzoom")
     zones.add_argument("--same-zoom", action="store_true", help="use --maxzoom for every zone")
 
     args = parser.parse_args(argv)
@@ -73,15 +74,16 @@ def _base(args) -> int:
 
 def _zones(args, work_dir: Path) -> int:
     zones_path = args.geojson or _extent_zone(parse_extent(args.extent), work_dir / "extent.geojson")
-    zones = zones_from_geojson(zones_path, args.maxzoom, work_dir, same_zoom=args.same_zoom)
+    zones = zones_from_geojson(zones_path, args.maxzoom, work_dir, same_zoom=args.same_zoom, minzoom=args.minzoom)
     archives = load_index(args.index)
     covered = _covered_zones(zones, archives)
     if not covered:
         return 1
     for zone, jobs in covered:
         if args.dry_run:
+            minzoom = min(job.minzoom for job in jobs)
             maxzoom = max(job.maxzoom for job in jobs)
-            print(f"zone {zone.name} z13-{maxzoom}: {', '.join(job.name for job in jobs)}")
+            print(f"zone {zone.name} z{minzoom}-{maxzoom}: {', '.join(job.name for job in jobs)}")
         else:
             print(extract_zone(zone, args.output_dir, archives=archives, binary=args.pmtiles_bin, threads=args.threads))
     return 0 if len(covered) == len(zones) else 1

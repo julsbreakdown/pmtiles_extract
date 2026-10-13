@@ -139,3 +139,16 @@ def test_command_is_required():
     with pytest.raises(SystemExit) as exc:
         main([])
     assert exc.value.code == 2
+
+
+def test_zones_minzoom_reaches_into_planet(index_path, tmp_path, capsys):
+    zones = _zones(tmp_path, (LYON_RING, {"name": "lyon", "maxzoom": 16}))
+    main(["zones", "--geojson", str(zones), "--minzoom", "10", "--maxzoom", "14", "--index", str(index_path), "--dry-run"])
+    assert capsys.readouterr().out.splitlines() == ["zone lyon z10-16: planet.pmtiles, 6-32-22.pmtiles"]
+
+
+def test_zones_maxzoom_below_minzoom_is_usage_error(index_path, tmp_path):
+    zones = _zones(tmp_path, (LYON_RING, {"name": "lyon", "maxzoom": 16}))
+    with pytest.raises(SystemExit) as exc:
+        main(["zones", "--geojson", str(zones), "--maxzoom", "1", "--index", str(index_path), "--dry-run"])
+    assert exc.value.code == 2

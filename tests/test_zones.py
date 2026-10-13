@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from mapterhorn_extract.zones import FRANCE_EXTENT, Zone, extract_base, extract_zone, zones_from_geojson
+from mapterhorn_extract.zones import FRANCE_EXTENT, Zone, extract_base, extract_zone, plan_zone, zones_from_geojson
 
 LYON_RING = [[4.8, 45.7], [4.9, 45.7], [4.9, 45.8], [4.8, 45.7]]
 CROSS_RING = [[5.60, 45.70], [5.65, 45.70], [5.65, 45.72], [5.60, 45.70]]
@@ -21,10 +21,10 @@ def _zones_file(tmp_path, *features):
     return path
 
 
-def _zone(tmp_path, ring, name="zone", maxzoom=14):
+def _zone(tmp_path, ring, name="zone", maxzoom=14, minzoom=13):
     region = tmp_path / f"{name}.geojson"
     region.write_text(json.dumps({"type": "FeatureCollection", "features": [_feature(ring)]}))
-    return Zone(name=name, maxzoom=maxzoom, region=region)
+    return Zone(name=name, maxzoom=maxzoom, region=region, minzoom=minzoom)
 
 
 def test_zones_take_name_and_zoom_from_properties(tmp_path):
@@ -40,10 +40,43 @@ def test_same_zoom_overrides_zone_zoom(tmp_path):
     assert [z.maxzoom for z in zones] == [15, 15]
 
 
-def test_zone_zoom_below_13_is_rejected(tmp_path):
+def test_zone_zoom_below_minzoom_is_rejected(tmp_path):
     path = _zones_file(tmp_path, _feature(LYON_RING, name="low", maxzoom=12))
-    with pytest.raises(ValueError, match="low.*below 13"):
+    with pytest.raises(ValueError, match="low.*below minzoom 13"):
         zones_from_geojson(path, 14, tmp_path / "work")
+
+
+def test_default_zoom_below_minzoom_is_rejected_even_if_unused(tmp_path):
+    path = _zones_file(tmp_path, _feature(LYON_RING, maxzoom=16))
+    with pytest.raises(ValueError, match="maxzoom 1 is below minzoom 13"):
+        zones_from_geojson(path, 1, tmp_path / "work")
+
+
+def test_minzoom_applies_to_every_zone(tmp_path):
+    path = _zones_file(tmp_path, _feature(LYON_RING, maxzoom=12))
+    [zone] = zones_from_geojson(path, 14, tmp_path / "work", minzoom=10)
+    assert (zone.minzoom, zone.maxzoom) == (10, 12)
+
+
+def test_minzoom_below_13_adds_planet_job(archives, tmp_path):
+    zone = _zone(tmp_path, LYON_RING, minzoom=10, maxzoom=14)
+    assert [(j.name, j.minzoom, j.maxzoom) for j in plan_zone(zone, archives)] == [
+        ("planet.pmtiles", 10, 12),
+        ("6-32-22.pmtiles", 13, 14),
+    ]
+
+
+def test_maxzoom_up_to_12_uses_planet_only(archives, tmp_path):
+    zone = _zone(tmp_path, LYON_RING, minzoom=5, maxzoom=8)
+    assert [(j.name, j.minzoom, j.maxzoom) for j in plan_zone(zone, archives)] == [("planet.pmtiles", 5, 8)]
+
+
+def test_extract_zone_merges_planet_and_high_zooms(archives, fake_pmtiles, tmp_path):
+    zone = _zone(tmp_path, LYON_RING, name="lyon", minzoom=10, maxzoom=14)
+    out = extract_zone(zone, tmp_path / "out", archives=archives, binary=str(fake_pmtiles))
+    assert out.name.startswith("lyon_z10-14_")
+    args = json.loads(out.read_text())
+    assert args[0] == "merge" and len(args) == 4
 
 
 def test_duplicate_zone_names_are_rejected(tmp_path):

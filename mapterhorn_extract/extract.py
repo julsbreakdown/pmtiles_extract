@@ -54,6 +54,7 @@ def _plan(
     maxzoom: int,
     region: str | Path | None = None,
     archives: list[Archive] | None = None,
+    minzoom: int = HIGH_ZOOM_MIN,
 ) -> list[Job]:
     if maxzoom < HIGH_ZOOM_MIN:
         raise ValueError(f"maxzoom must be >= {HIGH_ZOOM_MIN}, got {maxzoom}")
@@ -66,7 +67,7 @@ def _plan(
         Job(
             name=archive.name,
             url=archive.url,
-            minzoom=HIGH_ZOOM_MIN,
+            minzoom=max(minzoom, HIGH_ZOOM_MIN),
             maxzoom=min(maxzoom, archive.max_zoom),
             bbox=tuple(bbox),
             region=region_path,
@@ -83,6 +84,8 @@ def _plan_base(
     region: str | Path | None = None,
     archives: list[Archive] | None = None,
     label: str | None = None,
+    minzoom: int = 0,
+    maxzoom: int | None = None,
 ) -> Job:
     if archives is None:
         archives = load_index()
@@ -93,8 +96,8 @@ def _plan_base(
     return Job(
         name=planet.name,
         url=planet.url,
-        minzoom=0,
-        maxzoom=planet.max_zoom,
+        minzoom=minzoom,
+        maxzoom=planet.max_zoom if maxzoom is None else min(maxzoom, planet.max_zoom),
         bbox=tuple(bbox),
         region=region_path,
         area_key=_area_key(bbox, region_path),

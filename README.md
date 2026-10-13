@@ -3,7 +3,7 @@
 Extracts [Mapterhorn](https://mapterhorn.com) terrain tiles over a set of zones, as PMTiles:
 
 - **one base file**, zooms 0 to 12, cut from `planet.pmtiles` over France (or another extent you choose);
-- **one file per zone**, zoom 13 up to the zone's max zoom, merged from every Mapterhorn z6 archive the zone touches.
+- **one file per zone**, zoom 13 (or a lower `--minzoom`) up to the zone's max zoom, merged from every Mapterhorn archive the zone touches.
 
 Two front ends share the same code:
 
@@ -19,7 +19,7 @@ Two commands, run independently, in any order:
 | Command | Covers | Zooms | QGIS algorithm |
 |---|---|---|---|
 | `mapterhorn-extract base` | all of France, once | 0–12 | `mapterhorn:extract_base` |
-| `mapterhorn-extract zones --geojson zones.geojson --maxzoom 15` | specific zones only | 13 to each zone's max zoom | `mapterhorn:extract_zones` |
+| `mapterhorn-extract zones --geojson zones.geojson --maxzoom 15` | specific zones only | 13 (or `--minzoom`) to each zone's max zoom | `mapterhorn:extract_zones` |
 
 ```bash
 uv run mapterhorn-extract base --output-dir out/ --pmtiles-bin ./pmtiles
@@ -49,7 +49,7 @@ The France extent is `-5.15,42.33,8.23,51.10` (lon/lat). The base file over all 
 - **Zoom:** a zone's max zoom is capped by what Mapterhorn has where it lies (z17 over most of France, z18 in parts of the Alps). The file name shows the zoom actually reached.
 - **Key:** the 8-character key is a hash of the geometry. Editing a zone produces a new file for that zone only; the base file depends on the base extent alone.
 - **Re-runs:** a file that already exists is skipped, so an interrupted run resumes where it stopped. Extractions write to a `.part` file first, so a failed run never leaves a file that looks complete.
-- **Zoom below 13:** rejected, the base file already covers 0 to 12.
+- **Min zoom:** zone files start at 13 by default, since the base file covers 0 to 12. Lower it with `--minzoom` (QGIS: Min zoom) for a standalone zone file: zooms below 13 are cut from `planet.pmtiles` and merged with the rest. A max zoom below the min zoom is rejected.
 
 The tiles are Terrarium-encoded WebP elevation (a MapLibre `raster-dem` source), not a rendered hillshade.
 
@@ -81,14 +81,15 @@ Two algorithms under **Processing Toolbox > Mapterhorn**.
 |---|---|
 | Extent | Optional. Empty: France. Any CRS, reprojected to EPSG:4326 |
 
-**Extract Mapterhorn PMTiles per zone (zooms 13+).** One polygon of the input layer is one zone; selected features only is supported.
+**Extract Mapterhorn PMTiles per zone.** One polygon of the input layer is one zone; selected features only is supported.
 
 | Parameter | Meaning |
 |---|---|
 | Zones (polygon layer) | Any CRS, reprojected to EPSG:4326 |
 | Zone name field | Optional. Empty values become `zone_<n>` |
 | Zone max zoom field | Optional, numeric. Empty values use the default max zoom |
-| Default max zoom | 13 to 22, default 15 |
+| Min zoom | 0 to 22, default 13. Below 13 adds zooms from the planet archive |
+| Default max zoom | 0 to 22, default 15, not below the min zoom |
 | Same max zoom for all zones | Ignores the zoom field and applies the default to every zone |
 
 The run fails if no zone has Mapterhorn coverage above zoom 12. A zone without coverage among covered ones is reported and skipped.
@@ -120,11 +121,12 @@ Produces `france_z0-12_<key>.pmtiles`. To cut another area instead of France (fi
 uv run mapterhorn-extract zones --geojson zones.geojson --maxzoom 15 --output-dir out/ --pmtiles-bin ./pmtiles
 ```
 
-Produces one `<name>_z13-<zoom>_<key>.pmtiles` per zone, never the base file.
+Produces one `<name>_z<min>-<max>_<key>.pmtiles` per zone, never the base file.
 
 - `--geojson`: EPSG:4326 polygons, one zone per feature, optional properties `name` and `maxzoom`;
 - `--extent min_lon,min_lat,max_lon,max_lat`: instead of `--geojson`, a single zone named `extent`;
-- `--maxzoom` (required): zoom for zones without a `maxzoom` property;
+- `--minzoom`: first zoom of every zone file, default 13. Below 13 also pulls zooms from `planet.pmtiles`, e.g. `--minzoom 0` for a zone file that stands alone;
+- `--maxzoom` (required): zoom for zones without a `maxzoom` property, not below `--minzoom`;
 - `--same-zoom`: use `--maxzoom` for every zone.
 
 ### Common options

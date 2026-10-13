@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .area import POLYGON_TYPES, BBox, bbox_from_geojson
 from .extract import HIGH_ZOOM_MIN, Job, _plan, _plan_base, extract_one, merge
-from .index import Archive
+from .index import Archive, load_index
 
 
 FRANCE_EXTENT: BBox = (-5.15, 42.33, 8.23, 51.10)
@@ -20,6 +20,7 @@ class Zone:
     name: str
     maxzoom: int
     region: Path
+    minzoom: int = HIGH_ZOOM_MIN
 
 
 def zones_from_geojson(
@@ -27,7 +28,12 @@ def zones_from_geojson(
     default_maxzoom: int,
     work_dir: str | Path,
     same_zoom: bool = False,
+    minzoom: int = HIGH_ZOOM_MIN,
 ) -> list[Zone]:
+    if minzoom < 0:
+        raise ValueError(f"minzoom must be >= 0, got {minzoom}")
+    if default_maxzoom < minzoom:
+        raise ValueError(f"default maxzoom {default_maxzoom} is below minzoom {minzoom}")
     features = [f for f in _features(json.loads(Path(path).read_text(encoding="utf-8"))) if _is_polygon(f)]
     if not features:
         raise ValueError(f"{path}: no Polygon or MultiPolygon feature")
@@ -41,11 +47,11 @@ def zones_from_geojson(
         if any(zone.name == name for zone in zones):
             raise ValueError(f"duplicate zone name: {name}")
         maxzoom = default_maxzoom if same_zoom else _zoom(properties.get("maxzoom"), default_maxzoom, name)
-        if maxzoom < HIGH_ZOOM_MIN:
-            raise ValueError(f"zone {name}: maxzoom {maxzoom} is below {HIGH_ZOOM_MIN}, the base file covers 0-12")
+        if maxzoom < minzoom:
+            raise ValueError(f"zone {name}: maxzoom {maxzoom} is below minzoom {minzoom}")
         region = _write_regions(work_dir / "zones" / f"{name}.geojson", [feature])
         bbox_from_geojson(region)
-        zones.append(Zone(name=name, maxzoom=maxzoom, region=region))
+        zones.append(Zone(name=name, maxzoom=maxzoom, region=region, minzoom=minzoom))
     return zones
 
 
@@ -74,7 +80,16 @@ def extract_base(
 
 
 def plan_zone(zone: Zone, archives: list[Archive] | None = None) -> list[Job]:
-    return _plan(bbox_from_geojson(zone.region), zone.maxzoom, region=zone.region, archives=archives)
+    if archives is None:
+        archives = load_index()
+    bbox = bbox_from_geojson(zone.region)
+    jobs = []
+    if zone.minzoom < HIGH_ZOOM_MIN:
+        low_max = min(zone.maxzoom, HIGH_ZOOM_MIN - 1)
+        jobs.append(_plan_base(bbox, region=zone.region, archives=archives, minzoom=zone.minzoom, maxzoom=low_max))
+    if zone.maxzoom >= HIGH_ZOOM_MIN:
+        jobs += _plan(bbox, zone.maxzoom, region=zone.region, archives=archives, minzoom=zone.minzoom)
+    return jobs
 
 
 def extract_zone(
@@ -89,8 +104,9 @@ def extract_zone(
     if not jobs:
         raise ValueError(f"zone {zone.name}: no Mapterhorn archive above zoom 12")
     output_dir = Path(output_dir)
+    minzoom = min(job.minzoom for job in jobs)
     maxzoom = max(job.maxzoom for job in jobs)
-    output = output_dir / f"{zone.name}_z{HIGH_ZOOM_MIN}-{maxzoom}_{jobs[0].area_key}.pmtiles"
+    output = output_dir / f"{zone.name}_z{minzoom}-{maxzoom}_{jobs[0].area_key}.pmtiles"
     if output.exists():
         return output
     parts_root = output_dir / ".parts"

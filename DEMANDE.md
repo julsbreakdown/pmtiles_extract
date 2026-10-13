@@ -71,7 +71,7 @@ Entrées :
 Sortie :
 
 - **un fichier de base** `france_z0-12_<clé>.pmtiles` : z0..12 extrait de `planet.pmtiles` sur la France (`-5.15,42.33,8.23,51.10`), ou `base_z0-12_<clé>.pmtiles` sur une autre emprise donnée par l'utilisateur ;
-- **un fichier par zone** `<nom>_z13-<zoom>_<clé>.pmtiles` : z13..zoom de la zone (plafonné par le `max_zoom` de chaque archive), fusion par `pmtiles merge` des extraits de chaque archive z6 touchée. Les extraits d'une même zone viennent d'archives différentes, donc disjoints.
+- **un fichier par zone** `<nom>_z<min>-<zoom>_<clé>.pmtiles` : z13 (ou `--minzoom`)..zoom de la zone (plafonné par le `max_zoom` de chaque archive), fusion par `pmtiles merge` des extraits de chaque archive z6 touchée. Les extraits d'une même zone viennent d'archives différentes, donc disjoints.
 
 `<clé>` dépend de la géométrie : une zone modifiée produit un nouveau fichier au lieu de réutiliser l'ancien.
 
@@ -79,11 +79,11 @@ Traitement :
 
 1. reprojeter les zones en EPSG:4326 (côté QGIS) ;
 2. base : `pmtiles extract planet.pmtiles` z0..12 sur la France par défaut (`--bbox`), ou sur l'emprise de base choisie ;
-3. pour chaque zone : archives z6 dont la bbox intersecte celle de la zone, `pmtiles extract` z13..min(zoom, `max_zoom` de l'archive) avec `--region` = la zone, puis `pmtiles merge` en un fichier ;
+3. pour chaque zone : archives z6 dont la bbox intersecte celle de la zone, `pmtiles extract` z13..min(zoom, `max_zoom` de l'archive) avec `--region` = la zone, plus, si `--minzoom` < 13, `pmtiles extract planet.pmtiles` minzoom..12 sur la zone, puis `pmtiles merge` en un fichier ;
 4. un fichier final déjà présent est sauté ; les extraits intermédiaires sont supprimés après la fusion ;
 5. retourner la liste des fichiers produits.
 
-Une zone avec un zoom < 13 est une erreur : la base couvre déjà 0..12.
+Par défaut une zone commence à z13, la base couvrant déjà 0..12 ; `--minzoom` abaisse ce seuil pour un fichier de zone autonome. Un zoom max inférieur au zoom min est une erreur.
 
 Base et zones sont deux commandes séparées, lançables indépendamment : `mapterhorn-extract base` et `mapterhorn-extract zones` en CLI, `mapterhorn:extract_base` et `mapterhorn:extract_zones` dans QGIS.
 
