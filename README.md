@@ -10,9 +10,23 @@ Two front ends share the same code:
 - `mapterhorn_extract`: a Python library and command line, standard library only, no QGIS needed (scripts, Airflow);
 - `mapterhorn_pmtiles`: a QGIS Processing plugin, algorithms `mapterhorn:extract_base` and `mapterhorn:extract_zones`.
 
-The base file and the zone files are produced by two separate commands, so each can be run, scheduled or rerun on its own.
-
 Both wrap the [go-pmtiles](https://github.com/protomaps/go-pmtiles) CLI. Background and design decisions: [DEMANDE.md](DEMANDE.md).
+
+## Quick start
+
+Two commands, run independently, in any order:
+
+| Command | Covers | Zooms | QGIS algorithm |
+|---|---|---|---|
+| `mapterhorn-extract base` | all of France, once | 0–12 | `mapterhorn:extract_base` |
+| `mapterhorn-extract zones --geojson zones.geojson --maxzoom 15` | specific zones only | 13 to each zone's max zoom | `mapterhorn:extract_zones` |
+
+```bash
+uv run mapterhorn-extract base --output-dir out/ --pmtiles-bin ./pmtiles
+uv run mapterhorn-extract zones --geojson examples/alpes.geojson --maxzoom 15 --output-dir out/ --pmtiles-bin ./pmtiles
+```
+
+The base file rarely changes, so run it once; rerun `zones` whenever zones are added or edited. Add `--dry-run` to either to list what it would download.
 
 ## Requirements
 
@@ -89,24 +103,31 @@ Both share:
 
 ## Command line
 
-Two subcommands, one per output:
+### All of France: `base`
 
 ```bash
 uv run mapterhorn-extract base --output-dir out/ --pmtiles-bin ./pmtiles
-uv run mapterhorn-extract zones --geojson zones.geojson --maxzoom 15 --output-dir out/ --pmtiles-bin ./pmtiles
 ```
 
-`base`: the z0-12 file, over France unless one of these is given:
+Produces `france_z0-12_<key>.pmtiles`. To cut another area instead of France (file `base_z0-12_<key>.pmtiles`):
 
 - `--extent min_lon,min_lat,max_lon,max_lat`;
 - `--geojson`: an EPSG:4326 polygon.
 
-`zones`: one z13+ file per zone, never the base file. One of these is required:
+### Specific zones: `zones`
+
+```bash
+uv run mapterhorn-extract zones --geojson zones.geojson --maxzoom 15 --output-dir out/ --pmtiles-bin ./pmtiles
+```
+
+Produces one `<name>_z13-<zoom>_<key>.pmtiles` per zone, never the base file.
 
 - `--geojson`: EPSG:4326 polygons, one zone per feature, optional properties `name` and `maxzoom`;
-- `--extent min_lon,min_lat,max_lon,max_lat`: a single zone named `extent`;
+- `--extent min_lon,min_lat,max_lon,max_lat`: instead of `--geojson`, a single zone named `extent`;
 - `--maxzoom` (required): zoom for zones without a `maxzoom` property;
 - `--same-zoom`: use `--maxzoom` for every zone.
+
+### Common options
 
 Both take `--output-dir`, `--pmtiles-bin`, `--threads`, `--index` and `--dry-run` (list what would be extracted, nothing is downloaded). Write `--extent=-1.5,...` when the value starts with a minus sign.
 
